@@ -3,11 +3,22 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
-export const dynamic = "force-dynamic";
+export const runtime = "nodejs";        // force Node runtime (not edge)
+export const dynamic = "force-dynamic"; // don't pre-render
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
-  apiVersion: "2024-06-20"
-});
+let stripeClient: Stripe | null = null;
+
+function getStripe() {
+  if (!stripeClient) {
+    const secret = process.env.STRIPE_SECRET_KEY;
+    if (!secret) {
+      // This will ONLY run when the webhook is actually called, not at build time
+      throw new Error("STRIPE_SECRET_KEY is not set");
+    }
+    stripeClient = new Stripe(secret, { apiVersion: "2024-06-20" });
+  }
+  return stripeClient;
+}
 
 const supabase = createClient(
   process.env.SUPABASE_URL || "",
@@ -15,27 +26,33 @@ const supabase = createClient(
 );
 
 export async function POST(request: Request) {
-  const signature = request.headers.get("stripe-signature") || "";
   const body = await request.text();
+  const sig = request.headers.get("stripe-signature") || "";
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+  if (!webhookSecret) {
+    console.error("Missing STRIPE_WEBHOOK_SECRET env var");
+    return new NextResponse("Webhook misconfigured", { status: 500 });
+  }
 
   let event;
 
   try {
-    event = stripe.webhooks.constructEvent(
-      body,
-      signature,
-      process.env.STRIPE_WEBHOOK_SECRET || ""
-    );
+    const stripe = getStripe();
+    event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
   } catch (err: any) {
-    console.error("Webhook signature verification failed:", err.message);
-    return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });
+    console.error("Stripe webhook error:", err?.message || err);
+    return new NextResponse(
+      `Webhook Error: ${err?.message ?? "Invalid signature"}`,
+      { status: 400 }
+    );
   }
 
   if (event.type === "checkout.session.completed") {
     const session: any = event.data.object;
 
     const email = session.customer_details?.email || session.customer_email;
-    const customerId = session.customer;
+    const customerId = session.customer as string;
     const phone = session.metadata?.phone || "";
     const name = session.metadata?.name || "";
 
@@ -46,6 +63,7 @@ export async function POST(request: Request) {
           phone,
           name,
           stripe_customer_id: customerId,
+          // Evergreen paid gateway – far future
           paid_until: "2099-01-01"
         },
         { onConflict: "email" }
@@ -57,5 +75,5 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({ received: true }, { status: 200 });
+  return NextResponse.json({ received: true });
 }
