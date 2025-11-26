@@ -70,6 +70,7 @@ export default function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl space-y-6"
       >
+        {/* HERO COPY */}
         <div className="space-y-3">
           <h1 className="text-4xl font-bold">Deadhead Zero Reefer Whisper</h1>
           <p className="text-lg opacity-80">
@@ -77,9 +78,13 @@ export default function HomePage() {
             <br />
             The hidden lane edge before the herd wakes up.
           </p>
+          <p className="text-sm opacity-70">
+            Example Text: Reefer Alert: California northbound tightening fast Thu/Fri – lettuce and strawberry volume +18 % and carrier count down. – Deadhead Zero
+          </p>
           <p className="text-sm opacity-70">$99 / month · Cancel anytime</p>
         </div>
 
+        {/* CARD + FORM */}
         <div className="bg-black border border-cyan-500/40 rounded-2xl p-6 shadow-lg shadow-cyan-500/30 space-y-4">
           <input
             type="email"
