@@ -4,7 +4,9 @@ import React, { useState } from "react";
 import { loadStripe } from "@stripe/stripe-js";
 import { motion } from "framer-motion";
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string || "");
+const stripePromise = loadStripe(
+  (process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY as string) || ""
+);
 
 export default function HomePage() {
   const [email, setEmail] = useState("");
@@ -13,16 +15,35 @@ export default function HomePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Twilio-ready E.164 format: +[country][number], 10–15 digits total
+  const phoneIsValid = (value: string) => {
+    const e164 = /^\+[1-9]\d{9,14}$/;
+    return e164.test(value.trim());
+  };
+
   const handleSubscribe = async () => {
     setError(null);
+
+    if (!email) {
+      setError("Please enter your email.");
+      return;
+    }
+
+    if (!phoneIsValid(phone)) {
+      setError(
+        "Enter your phone in full international format, e.g. +17172384576 (no spaces or dashes)."
+      );
+      return;
+    }
+
     setLoading(true);
     try {
       const res = await fetch("/api/register-subscriber", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, phone, name })
+        body: JSON.stringify({ email, phone: phone.trim(), name }),
       });
 
       if (!res.ok) {
@@ -67,13 +88,22 @@ export default function HomePage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <input
-            type="tel"
-            placeholder="Cell phone (for daily text)"
-            className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-          />
+
+          <div className="space-y-1">
+            <input
+              type="tel"
+              placeholder="+17172384576"
+              inputMode="tel"
+              className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <p className="text-[11px] opacity-60">
+              Enter your number in full international format (E.164). Example:
+              <span className="ml-1 font-mono">+17172384576</span>
+            </p>
+          </div>
+
           <input
             type="text"
             placeholder="(optional) Name"
@@ -95,6 +125,7 @@ export default function HomePage() {
           <p className="text-xs opacity-70">
             You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern.
           </p>
+
           {error && <p className="text-xs text-red-400">{error}</p>}
         </div>
 
