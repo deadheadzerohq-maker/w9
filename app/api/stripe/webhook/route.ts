@@ -1,18 +1,19 @@
 // @ts-nocheck
 import { NextResponse } from "next/server";
 import Stripe from "stripe";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";        // force Node runtime (not edge)
-export const dynamic = "force-dynamic"; // don't pre-render
+export const runtime = "nodejs";        // Stripe needs Node runtime
+export const dynamic = "force-dynamic"; // don't pre-render / pre-eval
 
 let stripeClient: Stripe | null = null;
+let supabaseClient: SupabaseClient | null = null;
 
 function getStripe() {
   if (!stripeClient) {
     const secret = process.env.STRIPE_SECRET_KEY;
     if (!secret) {
-      // This will ONLY run when the webhook is actually called, not at build time
+      // Only evaluated at request time, not build
       throw new Error("STRIPE_SECRET_KEY is not set");
     }
     stripeClient = new Stripe(secret, { apiVersion: "2024-06-20" });
@@ -20,10 +21,20 @@ function getStripe() {
   return stripeClient;
 }
 
-const supabase = createClient(
-  process.env.SUPABASE_URL || "",
-  process.env.SUPABASE_SERVICE_ROLE_KEY || ""
-);
+function getSupabase() {
+  if (!supabaseClient) {
+    const url = process.env.SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!url || !key) {
+      // Only evaluated at request time, not build
+      throw new Error("Supabase env vars not set");
+    }
+
+    supabaseClient = createClient(url, key);
+  }
+  return supabaseClient;
+}
 
 export async function POST(request: Request) {
   const body = await request.text();
@@ -57,14 +68,15 @@ export async function POST(request: Request) {
     const name = session.metadata?.name || "";
 
     if (email && customerId) {
+      const supabase = getSupabase();
+
       const { error } = await supabase.from("profiles").upsert(
         {
           email,
           phone,
           name,
           stripe_customer_id: customerId,
-          // Evergreen paid gateway – far future
-          paid_until: "2099-01-01"
+          paid_until: "2099-01-01" // evergreen paid_until
         },
         { onConflict: "email" }
       );
