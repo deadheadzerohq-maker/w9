@@ -19,7 +19,7 @@ export default function RootLayout({ children }: RootLayoutProps) {
         <footer className="text-center text-xs opacity-60 py-8">
           Technology platform only, not a broker or load board. We never hold freight dollars.
           <br />
-          Operated by Deadhead Zero Logistics LLC · Texas
+          Operated by Deadhead Zero Logistics LLC
         </footer>
       </body>
     </html>
