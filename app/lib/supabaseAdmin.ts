@@ -5,7 +5,7 @@ if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
   throw new Error("Missing Supabase env vars");
 }
 
-export const supabaseAdmin = createClient(
+const supabaseAdmin = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY,
   {
@@ -14,3 +14,5 @@ export const supabaseAdmin = createClient(
     },
   }
 );
+
+export default supabaseAdmin;
