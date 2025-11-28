@@ -4,7 +4,7 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import Stripe from "stripe";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import supabaseAdmin from "../../../lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,15 +44,16 @@ export async function POST(req: Request) {
 
         const email =
           session.customer_details?.email ||
-          (session.metadata && (session.metadata.email as string | undefined));
+          (session.metadata &&
+            (session.metadata.email as string | undefined));
 
         const phone =
-          (session.metadata && (session.metadata.phone as string | undefined)) ||
-          undefined;
+          (session.metadata &&
+            (session.metadata.phone as string | undefined)) || undefined;
 
         const name =
-          (session.metadata && (session.metadata.name as string | undefined)) ||
-          undefined;
+          (session.metadata &&
+            (session.metadata.name as string | undefined)) || undefined;
 
         // Push paid_until far into the future to match your “evergreen until cancel” logic
         const paidUntil = new Date();
@@ -74,7 +75,10 @@ export async function POST(req: Request) {
           );
 
         if (error) {
-          console.error("Supabase upsert error (checkout.session.completed):", error);
+          console.error(
+            "Supabase upsert error (checkout.session.completed):",
+            error
+          );
           return new NextResponse("Supabase error", { status: 500 });
         }
 
@@ -93,7 +97,10 @@ export async function POST(req: Request) {
           .eq("stripe_customer_id", customerId);
 
         if (error) {
-          console.error("Supabase update error (subscription.deleted):", error);
+          console.error(
+            "Supabase update error (subscription.deleted):",
+            error
+          );
         }
 
         break;
