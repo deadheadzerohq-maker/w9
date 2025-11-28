@@ -1,6 +1,10 @@
 {
   "compilerOptions": {
     "target": "ESNext",
+    "baseUrl": ".",              // 👈 required for aliases
+    "paths": {
+      "@/*": ["./*"]            // 👈 tells Next that @/ means repo root
+    },
     "lib": ["DOM", "DOM.Iterable", "ESNext"],
     "allowJs": true,
     "skipLibCheck": true,
@@ -13,6 +17,6 @@
     "isolatedModules": true,
     "jsx": "preserve"
   },
-  "include": ["next-env.d.ts", "app/**/*.ts", "app/**/*.tsx"],
+  "include": ["next-env.d.ts", "app/**/*.ts", "app/**/*.tsx", "lib/**/*.ts", "lib/**/*.tsx"],
   "exclude": ["node_modules", "supabase"]
 }
