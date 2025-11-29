@@ -9,9 +9,11 @@ type Subscriber = {
 };
 
 type WhisperInsert = {
-  message: string;
-  source: string;
-  sent_at: string;
+  whisper_date: string;          // 'YYYY-MM-DD'
+  body: string;
+  source_model: string;
+  raw_usda_payload: unknown | null;
+  raw_fmcsa_payload: unknown | null;
 };
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
@@ -37,7 +39,7 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
 });
 
 // ---- USDA: SC National Truck Rate (FVWTRK, slug 2375) ----
-async function fetchUsdaContext(): Promise<string> {
+async function fetchUsdaContext(): Promise<{ summary: string; raw: any[] | null }> {
   const url =
     "https://marsapi.ams.usda.gov/services/v1.2/reports/2375?lastReports=1&allSections=true";
 
@@ -53,13 +55,13 @@ async function fetchUsdaContext(): Promise<string> {
 
     if (!res.ok) {
       console.error("USDA API error", res.status, await res.text());
-      return "USDA data unavailable";
+      return { summary: "USDA data unavailable", raw: null };
     }
 
     const data = (await res.json()) as any[];
 
     if (!Array.isArray(data) || data.length === 0) {
-      return "USDA data unavailable";
+      return { summary: "USDA data unavailable", raw: null };
     }
 
     const section =
@@ -113,22 +115,26 @@ async function fetchUsdaContext(): Promise<string> {
       return parts.join(" ");
     });
 
-    const context = lines.filter(Boolean).join(" | ");
-    return context || "USDA truck rates present but could not be parsed";
+    const summary =
+      lines.filter(Boolean).join(" | ") ||
+      "USDA truck rates present but could not be parsed";
+
+    return { summary, raw: data };
   } catch (err) {
     console.error("USDA fetch failed", err);
-    return "USDA data unavailable";
+    return { summary: "USDA data unavailable", raw: null };
   }
 }
 
 // ---- FMCSA: Reefer carrier snapshots via QCMobile API ----
-async function fetchFmcsaContext(): Promise<string> {
+async function fetchFmcsaContext(): Promise<{ summary: string; raw: Record<string, any>[] | null }> {
   if (!FMCSA_WEB_KEY || FMCSA_REEFER_DOT_LIST.length === 0) {
-    return "FMCSA data unavailable";
+    return { summary: "FMCSA data unavailable", raw: null };
   }
 
   const base = "https://mobile.fmcsa.dot.gov/qc/services";
   const summaries: string[] = [];
+  const rawArr: Record<string, any>[] = [];
 
   for (const dot of FMCSA_REEFER_DOT_LIST) {
     try {
@@ -202,14 +208,23 @@ async function fetchFmcsaContext(): Promise<string> {
       ].filter(Boolean);
 
       summaries.push(summaryParts.join(" "));
+      rawArr.push({
+        dot,
+        carrier,
+        cargo: cargoJson,
+        authority: authJson,
+      });
     } catch (err) {
       console.error("FMCSA fetch failed for DOT", dot, err);
     }
   }
 
-  if (!summaries.length) return "FMCSA data unavailable";
+  if (!summaries.length) {
+    return { summary: "FMCSA data unavailable", raw: rawArr.length ? rawArr : null };
+  }
 
-  return summaries.join(" | ").slice(0, 800);
+  const summary = summaries.join(" | ").slice(0, 800);
+  return { summary, raw: rawArr };
 }
 
 // ---- Grok-4: Generate ≤140-character lane whisper ----
@@ -321,25 +336,43 @@ serve(async (req) => {
       return new Response("Method not allowed", { status: 405 });
     }
 
-    const [usdaContext, fmcsaContext] = await Promise.all([
-      fetchUsdaContext(),
-      fetchFmcsaContext(),
-    ]);
+    // 1) Gather context (always)
+    const [{ summary: usdaSummary, raw: usdaRaw }, { summary: fmcsaSummary, raw: fmcsaRaw }] =
+      await Promise.all([fetchUsdaContext(), fetchFmcsaContext()]);
 
-    const smsText = await generateLaneWhisper(usdaContext, fmcsaContext);
+    // 2) Try Grok; if it fails, still produce a fallback message
+    let smsText: string;
+    let sourceModel = "grok-4";
 
-    // Save whisper to DB
-    const { error: whisperErr } = await supabase.from("whispers").insert({
-      message: smsText,
-      source: "daily-whisper",
-      sent_at: new Date().toISOString(),
-    } satisfies WhisperInsert);
+    try {
+      smsText = await generateLaneWhisper(usdaSummary, fmcsaSummary);
+    } catch (err) {
+      console.error("generateLaneWhisper failed, using fallback", err);
+      sourceModel = "fallback-static";
+      smsText =
+        "Daily Reefer Whisper unavailable today (data/API issue). System still running; check tomorrow for fresh lane insight.";
+    }
+
+    // 3) Always insert a whisper row, even if we used a fallback message
+    const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+    const whisperPayload: WhisperInsert = {
+      whisper_date: today,
+      body: smsText,
+      source_model: sourceModel,
+      raw_usda_payload: usdaRaw ? { summary: usdaSummary, raw: usdaRaw } : null,
+      raw_fmcsa_payload: fmcsaRaw ? { summary: fmcsaSummary, raw: fmcsaRaw } : null,
+    };
+
+    const { error: whisperErr } = await supabase
+      .from("whispers")
+      .insert(whisperPayload);
 
     if (whisperErr) {
       console.error("Failed to insert whisper", whisperErr);
     }
 
-    // Pull active, paid subscribers
+    // 4) Pull active, paid subscribers
     const nowIso = new Date().toISOString();
 
     const { data: subscribers, error: subErr } = await supabase
@@ -352,12 +385,14 @@ serve(async (req) => {
       console.error("Error fetching subscribers", subErr);
     }
 
+    // 5) SMS fan-out (best-effort)
     await sendPlivoBatch(subscribers ?? [], smsText);
 
     return new Response(
       JSON.stringify({
         ok: true,
         smsText,
+        sourceModel,
         subscribers: subscribers?.length ?? 0,
       }),
       {
