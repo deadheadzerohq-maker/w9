@@ -13,7 +13,7 @@ Payments processed securely by Stripe. SMS sent via Twilio.
 
 Cancel anytime in the Stripe Customer Portal – all data deleted within 30 days.
 
-Questions → support@deadheadzero.com`;
+Questions → info@deadheadzero.com`;
 
 export default function PrivacyPage() {
   return (
