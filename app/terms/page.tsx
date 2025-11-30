@@ -13,7 +13,7 @@ SMS Consent: By providing your mobile number you agree to one daily text. Messag
 
 Limitation of Liability: Maximum liability limited to amounts paid in prior 12 months.
 
-Governing Law: Texas · Venue Dallas County
+Governing Law: Wyoming · Venue Sheridan County
 
 support@deadheadzero.com
 © 2025 Deadhead Zero Logistics LLC`;
