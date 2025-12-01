@@ -1,5 +1,5 @@
 // supabase/functions/daily-whisper/index.ts
-import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+
 import { createClient } from "npm:@supabase/supabase-js@2";
 
 type Subscriber = {
@@ -9,7 +9,7 @@ type Subscriber = {
 };
 
 type WhisperInsert = {
-  whisper_date: string;          // 'YYYY-MM-DD'
+  whisper_date: string; // 'YYYY-MM-DD'
   body: string;
   source_model: string;
   raw_usda_payload: any;
@@ -23,16 +23,17 @@ const GROK_API_KEY = Deno.env.get("GROK_API_KEY")!; // xAI / Grok key
 const USDA_API_KEY = Deno.env.get("USDA_API_KEY") ?? ""; // MyMarketNews API key
 const FMCSA_WEB_KEY = Deno.env.get("FMCSA_WEB_KEY") ?? ""; // QCMobile API key
 
-const PLIVO_AUTH_ID = Deno.env.get("PLIVO_AUTH_ID") ?? "";
-const PLIVO_AUTH_TOKEN = Deno.env.get("PLIVO_AUTH_TOKEN") ?? "";
-const PLIVO_SOURCE_NUMBER = Deno.env.get("PLIVO_SOURCE_NUMBER") ?? "";
-
 // Comma-separated DOT numbers for reefer-focused carriers you care about
 // Example: "1234567,2345678,3456789"
 const FMCSA_REEFER_DOT_LIST = (Deno.env.get("FMCSA_REEFER_DOT_LIST") ?? "")
   .split(",")
   .map((s) => s.trim())
   .filter(Boolean);
+
+// Twilio configuration
+const TWILIO_ACCOUNT_SID = Deno.env.get("TWILIO_ACCOUNT_SID") ?? "";
+const TWILIO_AUTH_TOKEN = Deno.env.get("TWILIO_AUTH_TOKEN") ?? "";
+const TWILIO_FROM_NUMBER = Deno.env.get("TWILIO_FROM_NUMBER") ?? "";
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
   auth: { persistSession: false },
@@ -263,61 +264,71 @@ async function generateLaneWhisper(
   return text.slice(0, 137) + "...";
 }
 
-// ---- Plivo: SMS fan-out ----
-async function sendPlivoBatch(
+// ---- Twilio: SMS fan-out to active subscribers ----
+async function sendTwilioBatch(
   subscribers: Subscriber[],
   smsText: string,
 ): Promise<void> {
-  if (
-    !PLIVO_AUTH_ID || !PLIVO_AUTH_TOKEN || !PLIVO_SOURCE_NUMBER ||
-    !subscribers.length
-  ) {
-    console.warn("Plivo not fully configured or no subscribers, skipping SMS.");
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN || !TWILIO_FROM_NUMBER) {
+    console.warn("Twilio not fully configured, skipping SMS.");
+    return;
+  }
+
+  if (!subscribers.length) {
+    console.warn("No active subscribers to SMS, skipping.");
     return;
   }
 
   const baseUrl =
-    `https://api.plivo.com/v1/Account/${PLIVO_AUTH_ID}/Message/`;
+    `https://api.twilio.com/2010-04-01/Accounts/${TWILIO_ACCOUNT_SID}/Messages.json`;
+  const authHeader = "Basic " +
+    btoa(`${TWILIO_ACCOUNT_SID}:${TWILIO_AUTH_TOKEN}`);
 
   for (const sub of subscribers) {
     if (!sub.phone) continue;
 
     try {
-      const dst = sub.phone.replace(/[^0-9]/g, "");
-      if (!dst) continue;
+      const raw = sub.phone.trim();
+      const digits = raw.replace(/[^0-9+]/g, "");
+      let to = digits;
 
-      const payload = {
-        src: PLIVO_SOURCE_NUMBER,
-        dst,
-        text: smsText,
-      };
+      if (!to.startsWith("+")) {
+        // Naive default to US/Canada; adjust if you have international users
+        to = "+1" + digits;
+      }
+
+      const formBody = new URLSearchParams({
+        To: to,
+        From: TWILIO_FROM_NUMBER,
+        Body: smsText,
+      }).toString();
 
       const res = await fetch(baseUrl, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Authorization: "Basic " +
-            btoa(`${PLIVO_AUTH_ID}:${PLIVO_AUTH_TOKEN}`),
+          "Content-Type": "application/x-www-form-urlencoded",
+          Authorization: authHeader,
         },
-        body: JSON.stringify(payload),
+        body: formBody,
       });
 
       if (!res.ok) {
+        const text = await res.text();
         console.error(
-          "Plivo send error for subscriber",
+          "Twilio send error for subscriber",
           sub.id,
           res.status,
-          await res.text(),
+          text,
         );
       }
     } catch (err) {
-      console.error("Plivo send exception for subscriber", sub.id, err);
+      console.error("Twilio send exception for subscriber", sub.id, err);
     }
   }
 }
 
 // ---- Main handler ----
-serve(async (req) => {
+Deno.serve(async (req) => {
   try {
     if (req.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
@@ -364,8 +375,8 @@ serve(async (req) => {
       console.error("Error fetching subscribers", subErr);
     }
 
-    // Fan-out via Plivo (if configured)
-    await sendPlivoBatch(subscribers ?? [], smsText);
+    // Fan-out via Twilio (if configured)
+    await sendTwilioBatch(subscribers ?? [], smsText);
 
     return new Response(
       JSON.stringify({
