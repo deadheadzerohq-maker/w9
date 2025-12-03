@@ -32,7 +32,7 @@ export default function HomePage() {
     if (!phoneIsValid(phone)) {
       setError(
         "Enter your phone in full international format, e.g. +17172384576 (no spaces or dashes).
-         By entering your mobile number you agree to receive one SMS per day from us. Reply STOP anytime ."
+         By entering your mobile number you agree to receive one SMS per day from us. Reply STOP anytime"
       );
       return;
     }
