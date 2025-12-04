@@ -79,7 +79,8 @@ export default function HomePage() {
             The hidden lane edge before the herd wakes up.
           </p>
           <p className="text-sm opacity-70">
-            Example Text: Reefer Alert: California northbound tightening fast Thu/Fri – lettuce and strawberry volume +18 % and carrier count down. – Deadhead Zero
+            Example Text: Reefer Alert: California northbound tightening fast Thu/Fri – lettuce and
+            strawberry volume +18 % and carrier count down. – Deadhead Zero
           </p>
           <p className="text-sm opacity-70">$99 / month · Cancel anytime</p>
         </div>
@@ -127,8 +128,12 @@ export default function HomePage() {
             {loading ? "Redirecting..." : "Subscribe – $99/month →"}
           </motion.button>
 
-          <p className="text-xs opacity-70">
-            You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern. Reply STOP anytime to cancel SMS.
+          {/* UPDATED TWILIO-APPROVED OPT-IN DISCLOSURE */}
+          <p className="text-xs opacity-70 leading-relaxed">
+            You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern. By entering your phone
+            number and clicking Subscribe, you consent to receive daily SMS messages from Deadhead
+            Zero Reefer Whisper. Message frequency: 1 per day. Message &amp; data rates may apply.
+            You may reply STOP at any time to opt out.
           </p>
 
           {error && <p className="text-xs text-red-400">{error}</p>}
