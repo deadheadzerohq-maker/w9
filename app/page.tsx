@@ -128,7 +128,7 @@ export default function HomePage() {
           </motion.button>
 
           <p className="text-xs opacity-70">
-            You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern.
+            You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern. Reply STOP anytime to cancel SMS.
           </p>
 
           {error && <p className="text-xs text-red-400">{error}</p>}
