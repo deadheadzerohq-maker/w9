@@ -72,25 +72,20 @@ export default function HomePage() {
   };
 
   return (
-    <main className="flex items-center justify-center min-h-[80vh] px-4">
+    <main className="flex justify-center min-h-[80vh] px-4">
       <motion.div
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-xl space-y-6"
+        className="w-full max-w-xl space-y-6 pt-20"
       >
-        {/* HERO COPY */}
-        <div className="space-y-3">
-          <h1 className="text-4xl font-bold">Deadhead Zero Reefer Whisper</h1>
+        {/* HERO COPY – CENTERED AND DECLUTTERED */}
+        <div className="w-full text-center space-y-3">
+          <h1 className="text-4xl font-bold">
+            Deadhead Zero Reefer Whisper
+          </h1>
           <p className="text-lg opacity-80">
-            One reefer text every morning.
-            <br />
-            The hidden lane edge before the herd wakes up.
+            One high-signal reefer lane text every morning at 6 AM Eastern.
           </p>
-          <p className="text-sm opacity-70">
-            Example Text: Reefer Alert: California northbound tightening fast Thu/Fri – lettuce and
-            strawberry volume +18 % and carrier count down. – Deadhead Zero
-          </p>
-          <p className="text-sm opacity-70">$99 / month · Cancel anytime</p>
         </div>
 
         {/* CARD + FORM */}
@@ -146,23 +141,22 @@ export default function HomePage() {
               className="mt-[2px] h-4 w-4 rounded border-cyan-500/60 bg-black accent-green-400"
             />
             <label htmlFor="sms-consent" className="cursor-pointer">
-              You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern. By entering your
-              phone number and clicking Subscribe, you consent to receive daily SMS messages from
-              Deadhead Zero Reefer Whisper. Message frequency: 1 per day. Message &amp; data rates
-              may apply. You may reply STOP at any time to opt out.
+              You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern. By
+              entering your phone number and clicking Subscribe, you consent to
+              receive daily SMS messages from Deadhead Zero Reefer Whisper.
+              Message frequency: 1 per day. Message &amp; data rates may apply. You
+              may reply STOP at any time to opt out.
             </label>
           </div>
 
+          {/* ERROR MESSAGE */}
           {error && <p className="text-xs text-red-400">{error}</p>}
-        </div>
 
-        <div className="flex gap-4 text-xs opacity-60">
-          <a href="/terms" className="underline underline-offset-4">
-            Terms of Service
-          </a>
-          <a href="/privacy" className="underline underline-offset-4">
-            Privacy Policy
-          </a>
+          {/* EXAMPLE WHISPER MOVED INTO CARD */}
+          <p className="text-xs opacity-60 italic pt-2">
+            Example whisper: Reefer Alert: California northbound tightening fast
+            Thu/Fri – lettuce and strawberry volume +18% and carrier count down.
+          </p>
         </div>
       </motion.div>
     </main>
