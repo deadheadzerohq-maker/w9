@@ -54,9 +54,7 @@ export default function HomePage() {
         body: JSON.stringify({ email, phone: phone.trim(), name }),
       });
 
-      if (!res.ok) {
-        throw new Error("Unable to start checkout.");
-      }
+      if (!res.ok) throw new Error("Unable to start checkout.");
 
       const data = await res.json();
       const stripe = await stripePromise;
@@ -78,11 +76,9 @@ export default function HomePage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-xl space-y-6 pt-20"
       >
-        {/* HERO COPY – CENTERED AND DECLUTTERED */}
+        {/* HERO COPY */}
         <div className="w-full text-center space-y-3">
-          <h1 className="text-4xl font-bold">
-            Deadhead Zero Reefer Whisper
-          </h1>
+          <h1 className="text-4xl font-bold">Deadhead Zero Reefer Whisper</h1>
           <p className="text-lg opacity-80">
             One high-signal reefer lane text every morning at 6 AM Eastern.
           </p>
@@ -90,6 +86,7 @@ export default function HomePage() {
 
         {/* CARD + FORM */}
         <div className="bg-black border border-cyan-500/40 rounded-2xl p-6 shadow-lg shadow-cyan-500/30 space-y-4">
+
           <input
             type="email"
             placeholder="Email"
@@ -131,7 +128,7 @@ export default function HomePage() {
             {loading ? "Redirecting..." : "Subscribe – $99/month →"}
           </motion.button>
 
-          {/* SMS CONSENT CHECKBOX + DISCLOSURE */}
+          {/* SMS CONSENT CHECKBOX */}
           <div className="flex items-start gap-2 text-xs opacity-70 leading-relaxed">
             <input
               id="sms-consent"
@@ -141,21 +138,26 @@ export default function HomePage() {
               className="mt-[2px] h-4 w-4 rounded border-cyan-500/60 bg-black accent-green-400"
             />
             <label htmlFor="sms-consent" className="cursor-pointer">
-              You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern. By
-              entering your phone number and clicking Subscribe, you consent to
-              receive daily SMS messages from Deadhead Zero Reefer Whisper.
-              Message frequency: 1 per day. Message &amp; data rates may apply. You
-              may reply STOP at any time to opt out.
+              You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern.
+              By subscribing, you consent to receive daily SMS messages from
+              Deadhead Zero Reefer Whisper. Message frequency: 1 per day.
+              Message &amp; data rates may apply. Reply STOP anytime to opt out.
             </label>
           </div>
 
           {/* ERROR MESSAGE */}
           {error && <p className="text-xs text-red-400">{error}</p>}
 
-          {/* EXAMPLE WHISPER MOVED INTO CARD */}
+          {/* EXAMPLE WHISPER */}
           <p className="text-xs opacity-60 italic pt-2">
-            Example whisper: Reefer Alert: California northbound tightening fast
-            Thu/Fri – lettuce and strawberry volume +18% and carrier count down.
+            Example whisper: Salinas CA → Chicago IL: +12% to $2.85/mi. Slight
+            truck shortages in leafy greens like spinach, kale, parsley tightening
+            CA outbound reefer. Book spot loads now.
+          </p>
+
+          {/* CONTACT INFO (NEW) */}
+          <p className="text-xs opacity-60 pt-2 text-center">
+            Contact us: <span className="underline">info@deadheadzero.com</span>
           </p>
         </div>
       </motion.div>
