@@ -138,10 +138,9 @@ export default function HomePage() {
               className="mt-[2px] h-4 w-4 rounded border-cyan-500/60 bg-black accent-green-400"
             />
             <label htmlFor="sms-consent" className="cursor-pointer">
-              You’ll be charged $99 today. First whisper tomorrow 6 AM Eastern.
-              By subscribing, you consent to receive daily SMS messages from
-              Deadhead Zero Reefer Whisper. Message frequency: 1 per day.
-              Message &amp; data rates may apply. Reply STOP anytime to opt out.
+              Deadhead Zero Reefer Whisper is a subscription-based technology platform operated by Deadhead Zero Logistics LLC.
+The service sends one automated SMS message per day to subscribed trucking professionals (carriers and freight brokers) containing market insights for refrigerated (“reefer”) trucking lanes.
+The message is informational only and does not involve financial transactions, negotiations, or rate brokering..
             </label>
           </div>
 
