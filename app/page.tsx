@@ -39,7 +39,7 @@ export default function HomePage() {
 
     if (!smsConsent) {
       setError(
-        "Please check the box to consent to receiving SMS messages from Deadhead Zero Reefer Whisper."
+        "Please check the box to consent to receiving daily SMS messages from Deadhead Zero Reefer Whisper."
       );
       return;
     }
@@ -86,7 +86,6 @@ export default function HomePage() {
 
         {/* CARD + FORM */}
         <div className="bg-black border border-cyan-500/40 rounded-2xl p-6 shadow-lg shadow-cyan-500/30 space-y-4">
-
           <input
             type="email"
             placeholder="Email"
@@ -138,9 +137,13 @@ export default function HomePage() {
               className="mt-[2px] h-4 w-4 rounded border-cyan-500/60 bg-black accent-green-400"
             />
             <label htmlFor="sms-consent" className="cursor-pointer">
-              Deadhead Zero Reefer Whisper is a subscription-based technology platform operated by Deadhead Zero Logistics LLC.
-The service sends one automated SMS message per day to subscribed trucking professionals (carriers and freight brokers) containing market insights for refrigerated (“reefer”) trucking lanes.
-The message is informational only and does not involve financial transactions, negotiations, or rate brokering..
+              By checking this box, I agree to receive 1 automated SMS message
+              per day from Deadhead Zero Reefer Whisper containing reefer market
+              insights and lane opportunities. Message and data rates may apply.
+              Reply <span className="font-semibold">STOP</span> to cancel,{" "}
+              <span className="font-semibold">HELP</span> for help. I understand
+              this service is informational only and does not involve financial
+              transactions, negotiations, or rate brokering.
             </label>
           </div>
 
@@ -150,16 +153,32 @@ The message is informational only and does not involve financial transactions, n
           {/* EXAMPLE WHISPER */}
           <p className="text-xs opacity-60 italic pt-2">
             Example whisper: Salinas CA → Chicago IL: +12% to $2.85/mi. Slight
-            truck shortages in leafy greens like spinach, kale, parsley tightening
-            CA outbound reefer. Book spot loads now.
+            truck shortages in leafy greens like spinach, kale, parsley
+            tightening CA outbound reefer. Book spot loads now.
           </p>
 
-          {/* CONTACT INFO (NEW) */}
+          {/* CONTACT INFO */}
           <p className="text-xs opacity-60 pt-2 text-center">
             Contact us: <span className="underline">info@deadheadzero.com</span>
           </p>
         </div>
-      </motion.div>
-    </main>
-  );
-}
+
+        {/* ABOUT SECTION FOR TWILIO / BUSINESS CONTEXT */}
+        <section className="text-xs sm:text-sm opacity-80 space-y-2 pt-2">
+          <h2 className="text-sm font-semibold">
+            About Deadhead Zero Logistics LLC
+          </h2>
+          <p>
+            Deadhead Zero Logistics LLC is a U.S.-based freight technology
+            company focused on delivering real-time refrigerated (&quot;reefer&quot;)
+            market intelligence to trucking professionals. We build tools that
+            help carriers and freight brokers spot tightening markets, truck
+            shortages, and strong lane opportunities.
+          </p>
+          <p>
+            Reefer Whisper™ is our subscription SMS intelligence product. It
+            sends one concise daily text message with high-signal reefer market
+            insights based on public data sources and industry signals. The
+            platform is technology-only and does not broker freight, negotiate
+            rates, or hold customer funds.
+          </p>
