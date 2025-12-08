@@ -170,15 +170,20 @@ export default function HomePage() {
           </h2>
           <p>
             Deadhead Zero Logistics LLC is a U.S.-based freight technology
-            company focused on delivering real-time refrigerated (&quot;reefer&quot;)
-            market intelligence to trucking professionals. We build tools that
-            help carriers and freight brokers spot tightening markets, truck
+            company focused on delivering real-time refrigerated (reefer) market
+            intelligence to trucking professionals. We build tools that help
+            carriers and freight brokers spot tightening markets, truck
             shortages, and strong lane opportunities.
           </p>
           <p>
-            Reefer Whisper™ is our subscription SMS intelligence product. It
+            Reefer Whisper is our subscription SMS intelligence product. It
             sends one concise daily text message with high-signal reefer market
             insights based on public data sources and industry signals. The
             platform is technology-only and does not broker freight, negotiate
             rates, or hold customer funds.
           </p>
+        </section>
+      </motion.div>
+    </main>
+  );
+}
