@@ -63,13 +63,12 @@ export default function CarrierOnboardingPage() {
         const ext = file.name.split(".").pop();
         const path = `${crypto.randomUUID()}.${ext || "bin"}`;
 
-        const { data, error: uploadError } =
-          await supabaseBrowserClient.storage
-            .from("carrier-docs")
-            .upload(path, file, {
-              cacheControl: "3600",
-              upsert: false,
-            });
+        const { data, error: uploadError } = await supabaseBrowserClient.storage
+          .from("carrier-docs")
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+          });
 
         if (uploadError) {
           console.error("Upload error:", uploadError);
@@ -78,7 +77,7 @@ export default function CarrierOnboardingPage() {
 
         const { data: publicUrlData } = supabaseBrowserClient.storage
           .from("carrier-docs")
-          .getPublicUrl(data.path); // or switch to signed URLs if you want them private
+          .getPublicUrl(data.path); // switch to signed URLs later if you want private
 
         uploadResults.push({
           docType: d.docType,
@@ -131,17 +130,19 @@ export default function CarrierOnboardingPage() {
         animate={{ opacity: 1, y: 0 }}
         className="w-full max-w-2xl space-y-6 pt-16 pb-10"
       >
+        {/* HERO / HEADER */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">
             Carrier Onboarding – Deadhead Zero Logistics LLC
           </h1>
           <p className="text-sm opacity-80">
             Complete this secure onboarding form to be eligible for freight
-            opportunities. We use automated fraud checks (via Grok) plus
-            manual review to protect both carriers and shippers.
+            opportunities. We use automated fraud checks (via Grok) plus manual
+            review to protect both carriers and shippers.
           </p>
         </div>
 
+        {/* CARD */}
         <div className="bg-black border border-cyan-500/40 rounded-2xl p-6 shadow-lg shadow-cyan-500/30 space-y-4">
           {/* Identity */}
           <div className="space-y-2">
@@ -233,49 +234,123 @@ export default function CarrierOnboardingPage() {
               Upload your documents. PDFs preferred.
             </p>
 
+            {/* COI Upload */}
             <div className="space-y-2">
               <label className="text-xs opacity-80">
                 Certificate of Insurance (COI)
               </label>
-              <input
-                type="file"
-                accept="application/pdf,image/*"
-                multiple
-                onChange={(e) => addDocs(e.target.files, "COI")}
-                className="text-xs"
-              />
+
+              <label
+                className="
+                  flex flex-col items-center justify-center 
+                  w-full h-24 
+                  border border-cyan-500/40 
+                  rounded-2xl 
+                  bg-black/40 
+                  hover:bg-black/60 
+                  transition
+                  cursor-pointer
+                "
+              >
+                <span className="text-xs opacity-70 mb-1">
+                  Click to upload COI
+                </span>
+                <span className="text-[10px] opacity-50">
+                  (PDF or image)
+                </span>
+
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  multiple
+                  onChange={(e) => addDocs(e.target.files, "COI")}
+                  className="hidden"
+                />
+              </label>
             </div>
 
+            {/* W9 Upload */}
             <div className="space-y-2">
               <label className="text-xs opacity-80">W9</label>
-              <input
-                type="file"
-                accept="application/pdf,image/*"
-                multiple
-                onChange={(e) => addDocs(e.target.files, "W9")}
-                className="text-xs"
-              />
+
+              <label
+                className="
+                  flex flex-col items-center justify-center 
+                  w-full h-24 
+                  border border-cyan-500/40 
+                  rounded-2xl 
+                  bg-black/40 
+                  hover:bg-black/60 
+                  transition 
+                  cursor-pointer
+                "
+              >
+                <span className="text-xs opacity-70 mb-1">
+                  Click to upload W9
+                </span>
+                <span className="text-[10px] opacity-50">
+                  (PDF recommended)
+                </span>
+
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  multiple
+                  onChange={(e) => addDocs(e.target.files, "W9")}
+                  className="hidden"
+                />
+              </label>
             </div>
 
+            {/* Authority / Other Upload */}
             <div className="space-y-2">
-              <label className="text-xs opacity-80">Authority / Other</label>
-              <input
-                type="file"
-                accept="application/pdf,image/*"
-                multiple
-                onChange={(e) => addDocs(e.target.files, "OTHER")}
-                className="text-xs"
-              />
+              <label className="text-xs opacity-80">
+                Authority / Other Documents
+              </label>
+
+              <label
+                className="
+                  flex flex-col items-center justify-center 
+                  w-full h-24 
+                  border border-cyan-500/40 
+                  rounded-2xl 
+                  bg-black/40 
+                  hover:bg-black/60 
+                  transition 
+                  cursor-pointer
+                "
+              >
+                <span className="text-xs opacity-70 mb-1">
+                  Click to upload Authority letter or misc files
+                </span>
+                <span className="text-[10px] opacity-50">
+                  (PDF or image)
+                </span>
+
+                <input
+                  type="file"
+                  accept="application/pdf,image/*"
+                  multiple
+                  onChange={(e) => addDocs(e.target.files, "OTHER")}
+                  className="hidden"
+                />
+              </label>
             </div>
 
+            {/* Files selected list */}
             {docs.length > 0 && (
-              <div className="border border-cyan-500/30 rounded-2xl p-3 text-xs opacity-80 space-y-1">
-                <p className="font-semibold mb-1">Files selected:</p>
+              <div className="border border-cyan-500/30 rounded-xl p-4 text-xs opacity-90 space-y-2">
+                <p className="font-semibold">Files selected:</p>
+
                 {docs.map((d, idx) => (
-                  <div key={idx} className="flex justify-between gap-2">
-                    <span className="truncate max-w-[70%]">
-                      {d.file.name} ({d.docType})
+                  <div
+                    key={idx}
+                    className="flex justify-between gap-2 text-[11px]"
+                  >
+                    <span className="truncate max-w-[70%] opacity-80">
+                      {d.file.name}
                     </span>
+                    <span className="opacity-60">{d.docType}</span>
                   </div>
                 ))}
               </div>
