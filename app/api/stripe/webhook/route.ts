@@ -55,6 +55,25 @@ export async function POST(req: Request) {
           (session.metadata &&
             (session.metadata.name as string | undefined)) || undefined;
 
+        // NEW: pull opt-ins from metadata ("true"/"false" → boolean)
+        const smsOptInWhisper =
+          (session.metadata &&
+            session.metadata.smsOptInWhisper === "true") ||
+          false;
+
+        const brokerageOptIn =
+          (session.metadata &&
+            session.metadata.brokerageOptIn === "true") ||
+          false;
+
+        // If for some reason email is missing, bail out
+        if (!email) {
+          console.error(
+            "checkout.session.completed with no email in customer_details or metadata"
+          );
+          break;
+        }
+
         // Push paid_until far into the future to match your “evergreen until cancel” logic
         const paidUntil = new Date();
         paidUntil.setFullYear(paidUntil.getFullYear() + 5); // 5 years out
@@ -70,6 +89,11 @@ export async function POST(req: Request) {
               stripe_subscription_id: subscriptionId,
               status: "active",
               paid_until: paidUntil.toISOString(),
+
+              // NEW: store opt-ins
+              sms_opt_in_whisper: smsOptInWhisper,
+              brokerage_opt_in: brokerageOptIn,
+              has_onboarding_invite_sent: false,
             },
             { onConflict: "email" } // if email already exists, update it
           );
