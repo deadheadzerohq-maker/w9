@@ -9,7 +9,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
 });
 
 export async function POST(request: Request) {
-  const { email, phone, name } = await request.json();
+  const {
+    email,
+    phone,
+    name,
+    smsOptInWhisper,
+    brokerageOptIn,
+  } = await request.json();
 
   // Basic validation
   if (!email || !phone) {
@@ -24,7 +30,9 @@ export async function POST(request: Request) {
     const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
 
     if (!priceId || !siteUrl) {
-      console.error("Missing NEXT_PUBLIC_STRIPE_PRICE_ID or NEXT_PUBLIC_SITE_URL");
+      console.error(
+        "Missing NEXT_PUBLIC_STRIPE_PRICE_ID or NEXT_PUBLIC_SITE_URL"
+      );
       return NextResponse.json(
         { error: "Server misconfigured. Please try again later." },
         { status: 500 }
@@ -49,21 +57,26 @@ export async function POST(request: Request) {
       success_url: `${siteUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${siteUrl}?canceled=1`,
 
-      // Store subscriber info so the webhook can write to Supabase
+      // Store subscriber + opt-in info so the webhook can write to Supabase
       metadata: {
         email,
         phone,
         name: name || "",
+        smsOptInWhisper: smsOptInWhisper ? "true" : "false",
+        brokerageOptIn: brokerageOptIn ? "true" : "false",
       },
       subscription_data: {
         metadata: {
           email,
           phone,
           name: name || "",
+          smsOptInWhisper: smsOptInWhisper ? "true" : "false",
+          brokerageOptIn: brokerageOptIn ? "true" : "false",
         },
       },
     });
 
+    // Frontend expects { sessionId }
     return NextResponse.json({ sessionId: session.id });
   } catch (error) {
     console.error("Stripe checkout session error:", error);
