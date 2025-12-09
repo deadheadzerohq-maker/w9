@@ -23,7 +23,8 @@ const makeId = () => {
 };
 
 export default function CarrierOnboardingPage() {
-  const supabase = supabaseBrowserClient();
+  // supabaseBrowserClient is already a Supabase client object, not a function
+  const supabase = supabaseBrowserClient;
 
   const [legalName, setLegalName] = useState("");
   const [dbaName, setDbaName] = useState("");
