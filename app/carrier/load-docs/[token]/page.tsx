@@ -26,7 +26,9 @@ const makeId = () => {
 export default function CarrierLoadDocsPage() {
   const params = useParams();
   const token = params?.token as string;
-  const supabase = supabaseBrowserClient();
+
+  // supabaseBrowserClient is already a SupabaseClient instance
+  const supabase = supabaseBrowserClient;
 
   const [loadInfo, setLoadInfo] = useState<any | null>(null);
   const [documents, setDocuments] = useState<PendingDoc[]>([]);
