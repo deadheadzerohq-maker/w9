@@ -14,7 +14,9 @@ export default function HomePage() {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
   const [smsConsent, setSmsConsent] = useState(false);
+  const [brokerageConsent, setBrokerageConsent] = useState(false);
 
   // Twilio-ready E.164 format: +[country][number], 10–15 digits total
   const phoneIsValid = (value: string) => {
@@ -51,7 +53,13 @@ export default function HomePage() {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, phone: phone.trim(), name }),
+        body: JSON.stringify({
+          email,
+          phone: phone.trim(),
+          name,
+          smsOptInWhisper: smsConsent,
+          brokerageOptIn: brokerageConsent,
+        }),
       });
 
       if (!res.ok) throw new Error("Unable to start checkout.");
@@ -127,7 +135,7 @@ export default function HomePage() {
             {loading ? "Redirecting..." : "Subscribe – $99/month →"}
           </motion.button>
 
-          {/* SMS CONSENT CHECKBOX */}
+          {/* SMS CONSENT CHECKBOX – REEFER WHISPER ONLY (TWILIO) */}
           <div className="flex items-start gap-2 text-xs opacity-70 leading-relaxed">
             <input
               id="sms-consent"
@@ -142,8 +150,27 @@ export default function HomePage() {
               insights and lane opportunities. Message and data rates may apply.
               Reply <span className="font-semibold">STOP</span> to cancel,{" "}
               <span className="font-semibold">HELP</span> for help. I understand
-              this service is informational only and does not involve financial
-              transactions, negotiations, or rate brokering.
+              this SMS service is informational only and does not involve
+              financial transactions, negotiations, or rate brokering.
+            </label>
+          </div>
+
+          {/* BROKERAGE CONSENT CHECKBOX – EMAIL + CALLS ONLY */}
+          <div className="flex items-start gap-2 text-xs opacity-70 leading-relaxed">
+            <input
+              id="brokerage-consent"
+              type="checkbox"
+              checked={brokerageConsent}
+              onChange={(e) => setBrokerageConsent(e.target.checked)}
+              className="mt-[2px] h-4 w-4 rounded border-cyan-500/60 bg-black accent-green-400"
+            />
+            <label htmlFor="brokerage-consent" className="cursor-pointer">
+              I am interested in being contacted by Deadhead Zero Logistics LLC
+              (FMCSA-licensed freight broker, MC XXXXXXX) about freight
+              opportunities via email and voice calls. I understand brokerage
+              communication will <span className="font-semibold">not</span> use
+              this SMS number and will be handled separately from Reefer Whisper
+              texts.
             </label>
           </div>
 
@@ -159,28 +186,37 @@ export default function HomePage() {
 
           {/* CONTACT INFO */}
           <p className="text-xs opacity-60 pt-2 text-center">
-            Contact us: <span className="underline">info@deadheadzero.com</span>
+            Contact us:{" "}
+            <span className="underline">info@deadheadzero.com</span>
           </p>
         </div>
 
-        {/* ABOUT SECTION FOR TWILIO / BUSINESS CONTEXT */}
+        {/* ABOUT SECTION */}
         <section className="text-xs sm:text-sm opacity-80 space-y-2 pt-2">
           <h2 className="text-sm font-semibold">
             About Deadhead Zero Logistics LLC
           </h2>
           <p>
-            Deadhead Zero Logistics LLC is a U.S.-based freight technology
-            company focused on delivering real-time refrigerated (reefer) market
-            intelligence to trucking professionals. We build tools that help
-            carriers and freight brokers spot tightening markets, truck
-            shortages, and strong lane opportunities.
+            Deadhead Zero Logistics LLC is a U.S.-based company focused on
+            refrigerated (reefer) freight and market intelligence for trucking
+            professionals. We build tools that help carriers and freight brokers
+            spot tightening markets, truck shortages, and strong lane
+            opportunities.
           </p>
           <p>
             Reefer Whisper is our subscription SMS intelligence product. It
             sends one concise daily text message with high-signal reefer market
-            insights based on public data sources and industry signals. The
-            platform is technology-only and does not broker freight, negotiate
-            rates, or hold customer funds.
+            insights based on public data sources and industry signals. Reefer
+            Whisper itself is a technology-only insights service and does not
+            broker freight, negotiate rates, or hold customer funds.
+          </p>
+          <p>
+            Separately, Deadhead Zero Logistics LLC also operates an
+            FMCSA-licensed freight brokerage (MC XXXXXXX) that communicates with
+            carriers and shippers via email and phone calls, not SMS. If you
+            opt in above, we may invite you to complete a secure carrier packet
+            via our compliance partner, Highway, and contact you for future load
+            opportunities.
           </p>
         </section>
       </motion.div>
