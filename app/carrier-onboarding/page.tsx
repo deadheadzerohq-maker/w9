@@ -23,7 +23,7 @@ const makeId = () => {
 };
 
 export default function CarrierOnboardingPage() {
-  // supabaseBrowserClient is already a Supabase client object, not a function
+  // supabaseBrowserClient is already a client instance
   const supabase = supabaseBrowserClient;
 
   const [legalName, setLegalName] = useState("");
@@ -50,10 +50,6 @@ export default function CarrierOnboardingPage() {
   const [preferredLanes, setPreferredLanes] = useState("");
   const [fleetSize, setFleetSize] = useState<number | "">("");
 
-  const [factoringCompanyName, setFactoringCompanyName] = useState("");
-  const [factoringContactEmail, setFactoringContactEmail] = useState("");
-  const [factoringContactPhone, setFactoringContactPhone] = useState("");
-  const [paymentTerms, setPaymentTerms] = useState("Net 30");
   const [operatingRegions, setOperatingRegions] = useState("48-state");
 
   const [agreementChecked, setAgreementChecked] = useState(false);
@@ -156,10 +152,8 @@ export default function CarrierOnboardingPage() {
           preferredLanes,
           fleetSize: fleetSize === "" ? null : Number(fleetSize),
 
-          factoringCompanyName,
-          factoringContactEmail,
-          factoringContactPhone,
-          paymentTerms,
+          // No factoring fields; payment is fixed
+          paymentTerms: "72 hours",
           operatingRegions,
 
           agreementChecked,
@@ -431,9 +425,9 @@ export default function CarrierOnboardingPage() {
             </div>
           </section>
 
-          {/* Tax / Factoring */}
+          {/* Tax & Payment */}
           <section className="space-y-4">
-            <h2 className="text-lg font-semibold">Tax, Factoring & Payment</h2>
+            <h2 className="text-lg font-semibold">Tax & Payment</h2>
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <label className="text-xs block mb-1">Tax ID / EIN</label>
@@ -444,45 +438,12 @@ export default function CarrierOnboardingPage() {
                   onChange={(e) => setTaxId(e.target.value)}
                 />
               </div>
-              <div>
-                <label className="text-xs block mb-1">Payment terms</label>
-                <select
-                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                  value={paymentTerms}
-                  onChange={(e) => setPaymentTerms(e.target.value)}
-                >
-                  <option value="Net 30">Net 30</option>
-                  <option value="Net 21">Net 21</option>
-                  <option value="Quick pay">Quick pay</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs block mb-1">Factoring company</label>
-                <input
-                  type="text"
-                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                  value={factoringCompanyName}
-                  onChange={(e) => setFactoringCompanyName(e.target.value)}
-                  placeholder="If applicable"
-                />
-              </div>
-              <div>
-                <label className="text-xs block mb-1">Factoring contact email</label>
-                <input
-                  type="email"
-                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                  value={factoringContactEmail}
-                  onChange={(e) => setFactoringContactEmail(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="text-xs block mb-1">Factoring contact phone</label>
-                <input
-                  type="tel"
-                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                  value={factoringContactPhone}
-                  onChange={(e) => setFactoringContactPhone(e.target.value)}
-                />
+              <div className="text-xs text-gray-300 flex items-center">
+                Deadhead Zero pays carriers within{" "}
+                <span className="ml-1 font-semibold text-green-300">
+                  72 hours
+                </span>{" "}
+                of receiving a clean POD and invoice. No factoring required.
               </div>
             </div>
           </section>
