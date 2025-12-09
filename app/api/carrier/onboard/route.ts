@@ -59,10 +59,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // You pay carriers within 72 hours – hard-set this
     const paymentTerms = "72 hours";
-
-    // 1) Insert carrier
     const now = new Date().toISOString();
 
     const { data: carrier, error: carrierError } = await supabaseAdmin
@@ -111,7 +108,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2) Insert carrier docs
     if (Array.isArray(documents) && documents.length > 0) {
       const rows = documents.map((d: any) => ({
         carrier_id: carrier.id,
@@ -130,7 +126,6 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3) Grok fraud/risk scoring – pass the shape it expects
     try {
       const grokResult = await runGrokFraudCheck({
         legalName,
