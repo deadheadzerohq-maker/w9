@@ -1,12 +1,14 @@
+// app/api/carrier/onboard/route.ts
+
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { runGrokFraudCheck } from "@/lib/grokFraud"; // you already have this helper
+import supabaseAdmin from "@/lib/supabaseAdmin"; // ✅ default import
+import { runGrokFraudCheck } from "@/lib/grokFraud";
 
 export async function POST(req: Request) {
   try {
     const ip =
-      (req.headers as any).get?.("x-forwarded-for") ||
-      (req.headers as any).get?.("x-real-ip") ||
+      req.headers.get("x-forwarded-for") ??
+      req.headers.get("x-real-ip") ??
       null;
 
     const body = await req.json();
@@ -132,7 +134,7 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3) Grok fraud/risk scoring (best-effort)
+    // 3) Grok fraud/risk scoring (best-effort, non-blocking)
     try {
       const grokResult = await runGrokFraudCheck({
         carrier,
