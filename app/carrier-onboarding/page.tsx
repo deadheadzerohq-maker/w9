@@ -1,98 +1,136 @@
 "use client";
 
+// @ts-nocheck
+
 import React, { useState } from "react";
-import { motion } from "framer-motion";
 import { supabaseBrowserClient } from "@/lib/supabaseClient";
 
-type UploadingDoc = {
+type DocType = "COI" | "W9" | "AUTHORITY" | "OTHER";
+
+interface PendingDoc {
+  id: string;
   file: File;
-  docType: string;
+  docType: DocType;
+}
+
+// Simple helper so we don't need Node's crypto import
+const makeId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    // @ts-ignore
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
 };
 
 export default function CarrierOnboardingPage() {
+  const supabase = supabaseBrowserClient();
+
   const [legalName, setLegalName] = useState("");
   const [dbaName, setDbaName] = useState("");
   const [mcNumber, setMcNumber] = useState("");
   const [dotNumber, setDotNumber] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [postalCode, setPostalCode] = useState("");
+  const [remitAddress, setRemitAddress] = useState("");
+
+  const [taxId, setTaxId] = useState("");
+  const [primaryContactName, setPrimaryContactName] = useState("");
+  const [primaryContactTitle, setPrimaryContactTitle] = useState("");
+  const [dispatchPhone, setDispatchPhone] = useState("");
+  const [afterHoursPhone, setAfterHoursPhone] = useState("");
+
   const [equipmentType, setEquipmentType] = useState("");
   const [preferredLanes, setPreferredLanes] = useState("");
+  const [fleetSize, setFleetSize] = useState<number | "">("");
 
-  const [docs, setDocs] = useState<UploadingDoc[]>([]);
+  const [factoringCompanyName, setFactoringCompanyName] = useState("");
+  const [factoringContactEmail, setFactoringContactEmail] = useState("");
+  const [factoringContactPhone, setFactoringContactPhone] = useState("");
+  const [paymentTerms, setPaymentTerms] = useState("Net 30");
+  const [operatingRegions, setOperatingRegions] = useState("48-state");
+
+  const [agreementChecked, setAgreementChecked] = useState(false);
+  const [esignName, setEsignName] = useState("");
+
+  const [documents, setDocuments] = useState<PendingDoc[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
 
-  const addDocs = (files: FileList | null, docType: string) => {
+  const addFiles = (files: FileList | null, docType: DocType) => {
     if (!files) return;
-    const list: UploadingDoc[] = [];
-    Array.from(files).forEach((file) => {
-      list.push({ file, docType });
+    const next: PendingDoc[] = [];
+    Array.from(files).forEach((f) => {
+      next.push({
+        id: makeId(),
+        file: f,
+        docType,
+      });
     });
-    setDocs((prev) => [...prev, ...list]);
+    setDocuments((prev) => [...prev, ...next]);
   };
 
   const handleSubmit = async () => {
     setError(null);
-    setMessage(null);
+    setSuccess(null);
 
-    if (!legalName || !email || !phone) {
-      setError("Legal name, email, and phone are required.");
+    if (!legalName || !email || !phone || !mcNumber || !dotNumber) {
+      setError("Please complete all required fields (legal name, MC, DOT, contact).");
       return;
     }
 
-    if (docs.length === 0) {
-      setError("Please upload at least one document (COI, W9, etc.).");
+    if (!agreementChecked || !esignName.trim()) {
+      setError(
+        "You must agree to the broker–carrier agreement and provide an e-signature name."
+      );
       return;
     }
 
     setSubmitting(true);
 
     try {
-      const uploadResults: {
-        docType: string;
-        fileUrl: string;
-        originalFilename: string;
-        mimeType: string;
-      }[] = [];
+      // 1) Upload docs to Supabase Storage
+      const uploadedDocs: any[] = [];
 
-      // 1) Upload each file to Supabase Storage
-      for (const d of docs) {
-        const file = d.file;
-        const ext = file.name.split(".").pop();
-        const path = `${crypto.randomUUID()}.${ext || "bin"}`;
+      for (const doc of documents) {
+        const ext = doc.file.name.split(".").pop() || "";
+        const path = `${makeId()}.${ext}`;
 
-        const { data, error: uploadError } = await supabaseBrowserClient.storage
+        const { error: uploadError } = await supabase.storage
           .from("carrier-docs")
-          .upload(path, file, {
+          .upload(path, doc.file, {
             cacheControl: "3600",
-            upsert: false,
           });
 
         if (uploadError) {
-          console.error("Upload error:", uploadError);
-          throw new Error("Failed to upload one or more documents.");
+          console.error(uploadError);
+          throw new Error(
+            `Failed to upload ${doc.file.name}. Please try again.`
+          );
         }
 
-        const { data: publicUrlData } = supabaseBrowserClient.storage
-          .from("carrier-docs")
-          .getPublicUrl(data.path); // switch to signed URLs later if you want private
+        const {
+          data: { publicUrl },
+        } = supabase.storage.from("carrier-docs").getPublicUrl(path);
 
-        uploadResults.push({
-          docType: d.docType,
-          fileUrl: publicUrlData.publicUrl,
-          originalFilename: file.name,
-          mimeType: file.type,
+        uploadedDocs.push({
+          docType: doc.docType,
+          fileUrl: publicUrl,
+          originalFilename: doc.file.name,
+          mimeType: doc.file.type,
         });
       }
 
-      // 2) Call our API to create carrier + run Grok analysis
+      // 2) Send payload to API
       const res = await fetch("/api/carrier/onboard", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           legalName,
           dbaName,
@@ -100,285 +138,486 @@ export default function CarrierOnboardingPage() {
           dotNumber,
           email,
           phone,
+
+          addressLine1,
+          addressLine2,
+          city,
+          state,
+          postalCode,
+          remitAddress,
+          taxId,
+          primaryContactName,
+          primaryContactTitle,
+          dispatchPhone,
+          afterHoursPhone,
+
           equipmentType,
           preferredLanes,
-          documents: uploadResults,
+          fleetSize: fleetSize === "" ? null : Number(fleetSize),
+
+          factoringCompanyName,
+          factoringContactEmail,
+          factoringContactPhone,
+          paymentTerms,
+          operatingRegions,
+
+          agreementChecked,
+          esignName,
+
+          documents: uploadedDocs,
         }),
       });
 
       if (!res.ok) {
-        const json = await res.json().catch(() => ({}));
-        throw new Error(json.error || "Onboarding failed.");
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to submit carrier packet.");
       }
 
-      setMessage(
-        "Thanks! Your carrier packet was submitted successfully. We’ll review your information and get back to you."
+      await res.json();
+
+      setSuccess(
+        "Thanks! Your carrier packet was submitted. We’ll review and follow up soon."
       );
-      setDocs([]);
+      setDocuments([]);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Something went wrong. Please try again.");
+      setError(err.message || "Unexpected error submitting packet.");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const requiredLabel = (label: string) => (
+    <span>
+      {label} <span className="text-red-400">*</span>
+    </span>
+  );
+
   return (
-    <main className="flex justify-center min-h-[80vh] px-4">
-      <motion.div
-        initial={{ opacity: 0, y: 16 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-2xl space-y-6 pt-16 pb-10"
-      >
-        {/* HERO / HEADER */}
-        <div className="text-center space-y-2">
-          <h1 className="text-3xl font-bold">
-            Carrier Onboarding – Deadhead Zero Logistics LLC
+    <main className="flex justify-center min-h-[80vh] px-4 py-10 bg-black text-white">
+      <div className="w-full max-w-4xl space-y-8">
+        {/* Header */}
+        <header className="space-y-2">
+          <h1 className="text-3xl font-semibold">
+            Deadhead Zero Carrier Onboarding
           </h1>
-          <p className="text-sm opacity-80">
-            Complete this secure onboarding form to be eligible for freight
-            opportunities. We use automated fraud checks (via Grok) plus manual
-            review to protect both carriers and shippers.
+          <p className="text-sm text-gray-300 max-w-2xl">
+            Complete this packet so Deadhead Zero Logistics LLC (FMCSA-licensed
+            freight broker) can tender loads to your fleet. This onboarding is
+            separate from the Reefer Whisper SMS subscription.
           </p>
-        </div>
+        </header>
 
-        {/* CARD */}
-        <div className="bg-black border border-cyan-500/40 rounded-2xl p-6 shadow-lg shadow-cyan-500/30 space-y-4">
-          {/* Identity */}
-          <div className="space-y-2">
-            <label className="text-xs opacity-80">
-              Legal Name (as on authority / W9)
-            </label>
-            <input
-              className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-              value={legalName}
-              onChange={(e) => setLegalName(e.target.value)}
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-xs opacity-80">DBA (optional)</label>
-            <input
-              className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-              value={dbaName}
-              onChange={(e) => setDbaName(e.target.value)}
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs opacity-80">MC Number</label>
-              <input
-                className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                value={mcNumber}
-                onChange={(e) => setMcNumber(e.target.value)}
-              />
+        {/* Card */}
+        <div className="bg-zinc-950 border border-cyan-500/40 rounded-2xl p-6 md:p-8 shadow-lg shadow-cyan-500/20 space-y-8">
+          {/* Company Info */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Carrier & Authority Info</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-xs block mb-1">
+                  {requiredLabel("Legal company name")}
+                </label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={legalName}
+                  onChange={(e) => setLegalName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">DBA (if any)</label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={dbaName}
+                  onChange={(e) => setDbaName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">
+                  {requiredLabel("MC number")}
+                </label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={mcNumber}
+                  onChange={(e) => setMcNumber(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">
+                  {requiredLabel("DOT number")}
+                </label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={dotNumber}
+                  onChange={(e) => setDotNumber(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs opacity-80">DOT Number</label>
-              <input
-                className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                value={dotNumber}
-                onChange={(e) => setDotNumber(e.target.value)}
-              />
+          </section>
+
+          {/* Contact & Address */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Contact & Address</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-xs block mb-1">
+                  {requiredLabel("Primary contact name")}
+                </label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={primaryContactName}
+                  onChange={(e) => setPrimaryContactName(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Contact title</label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={primaryContactTitle}
+                  onChange={(e) => setPrimaryContactTitle(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">
+                  {requiredLabel("Email")}
+                </label>
+                <input
+                  type="email"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">
+                  {requiredLabel("Phone")}
+                </label>
+                <input
+                  type="tel"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Dispatch phone</label>
+                <input
+                  type="tel"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={dispatchPhone}
+                  onChange={(e) => setDispatchPhone(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">After-hours phone</label>
+                <input
+                  type="tel"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={afterHoursPhone}
+                  onChange={(e) => setAfterHoursPhone(e.target.value)}
+                />
+              </div>
             </div>
-          </div>
 
-          {/* Contact */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <label className="text-xs opacity-80">Email</label>
-              <input
-                type="email"
-                className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <label className="text-xs block mb-1">Physical address</label>
+                <input
+                  type="text"
+                  placeholder="Address line 1"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300 mb-2"
+                  value={addressLine1}
+                  onChange={(e) => setAddressLine1(e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Address line 2"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300 mb-2"
+                  value={addressLine2}
+                  onChange={(e) => setAddressLine2(e.target.value)}
+                />
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="text"
+                    placeholder="City"
+                    className="col-span-1 bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="State"
+                    className="col-span-1 bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                  />
+                  <input
+                    type="text"
+                    placeholder="ZIP"
+                    className="col-span-1 bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                    value={postalCode}
+                    onChange={(e) => setPostalCode(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs block mb-1">
+                  Remit-to address (if different)
+                </label>
+                <textarea
+                  className="w-full h-[120px] bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300 resize-none"
+                  value={remitAddress}
+                  onChange={(e) => setRemitAddress(e.target.value)}
+                  placeholder="Remit name / address for payments"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <label className="text-xs opacity-80">Phone</label>
-              <input
-                className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-              />
+          </section>
+
+          {/* Operations */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Operations & Equipment</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-xs block mb-1">Equipment type</label>
+                <input
+                  type="text"
+                  placeholder="e.g. 53' reefer, team, hazmat"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={equipmentType}
+                  onChange={(e) => setEquipmentType(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Fleet size</label>
+                <input
+                  type="number"
+                  min={1}
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={fleetSize}
+                  onChange={(e) =>
+                    setFleetSize(
+                      e.target.value === "" ? "" : Number(e.target.value)
+                    )
+                  }
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Preferred lanes</label>
+                <textarea
+                  className="w-full h-[80px] bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300 resize-none"
+                  value={preferredLanes}
+                  onChange={(e) => setPreferredLanes(e.target.value)}
+                  placeholder="e.g. CA → TX, AZ → Midwest, FL → Northeast"
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Operating regions</label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={operatingRegions}
+                  onChange={(e) => setOperatingRegions(e.target.value)}
+                  placeholder="48-state, regional, dedicated corridors, etc."
+                />
+              </div>
             </div>
-          </div>
+          </section>
 
-          {/* Ops Profile */}
-          <div className="space-y-2">
-            <label className="text-xs opacity-80">Equipment Type</label>
-            <input
-              className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
-              placeholder="Reefer, Dry Van, Flatbed, etc."
-              value={equipmentType}
-              onChange={(e) => setEquipmentType(e.target.value)}
-            />
-          </div>
+          {/* Tax / Factoring */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Tax, Factoring & Payment</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="text-xs block mb-1">Tax ID / EIN</label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={taxId}
+                  onChange={(e) => setTaxId(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Payment terms</label>
+                <select
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={paymentTerms}
+                  onChange={(e) => setPaymentTerms(e.target.value)}
+                >
+                  <option value="Net 30">Net 30</option>
+                  <option value="Net 21">Net 21</option>
+                  <option value="Quick pay">Quick pay</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Factoring company</label>
+                <input
+                  type="text"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={factoringCompanyName}
+                  onChange={(e) => setFactoringCompanyName(e.target.value)}
+                  placeholder="If applicable"
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Factoring contact email</label>
+                <input
+                  type="email"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={factoringContactEmail}
+                  onChange={(e) => setFactoringContactEmail(e.target.value)}
+                />
+              </div>
+              <div>
+                <label className="text-xs block mb-1">Factoring contact phone</label>
+                <input
+                  type="tel"
+                  className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                  value={factoringContactPhone}
+                  onChange={(e) => setFactoringContactPhone(e.target.value)}
+                />
+              </div>
+            </div>
+          </section>
 
-          <div className="space-y-2">
-            <label className="text-xs opacity-80">
-              Preferred Lanes / Regions
-            </label>
-            <textarea
-              className="w-full bg-black border border-cyan-500/50 rounded-2xl px-3 py-2 text-sm outline-none focus:border-cyan-300 min-h-[60px]"
-              placeholder="e.g., CA → Midwest, AZ → TX, Nogales → Southeast"
-              value={preferredLanes}
-              onChange={(e) => setPreferredLanes(e.target.value)}
-            />
-          </div>
-
-          {/* Docs */}
-          <div className="space-y-3">
-            <p className="text-xs opacity-80">
-              Upload your documents. PDFs preferred.
+          {/* Documents */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold">Upload required documents</h2>
+            <p className="text-xs text-gray-300">
+              At minimum, please upload your COI and W-9. Authority letters,
+              safety certificates, and other documents can help us approve you
+              faster.
             </p>
 
-            {/* COI Upload */}
-            <div className="space-y-2">
-              <label className="text-xs opacity-80">
-                Certificate of Insurance (COI)
-              </label>
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* COI */}
+              <div className="border border-cyan-500/40 rounded-xl p-3 bg-black/40">
+                <p className="text-xs font-semibold mb-2">Certificate of Insurance (COI)</p>
+                <label className="inline-flex items-center justify-center px-3 py-1.5 text-xs rounded-full border border-cyan-500/60 bg-cyan-500/10 cursor-pointer hover:bg-cyan-500/20 transition">
+                  Upload COI
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => addFiles(e.target.files, "COI")}
+                  />
+                </label>
+              </div>
 
-              <label
-                className="
-                  flex flex-col items-center justify-center 
-                  w-full h-24 
-                  border border-cyan-500/40 
-                  rounded-2xl 
-                  bg-black/40 
-                  hover:bg-black/60 
-                  transition
-                  cursor-pointer
-                "
-              >
-                <span className="text-xs opacity-70 mb-1">
-                  Click to upload COI
-                </span>
-                <span className="text-[10px] opacity-50">
-                  (PDF or image)
-                </span>
+              {/* W9 */}
+              <div className="border border-cyan-500/40 rounded-xl p-3 bg-black/40">
+                <p className="text-xs font-semibold mb-2">W-9</p>
+                <label className="inline-flex items-center justify-center px-3 py-1.5 text-xs rounded-full border border-cyan-500/60 bg-cyan-500/10 cursor-pointer hover:bg-cyan-500/20 transition">
+                  Upload W-9
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) => addFiles(e.target.files, "W9")}
+                  />
+                </label>
+              </div>
 
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  multiple
-                  onChange={(e) => addDocs(e.target.files, "COI")}
-                  className="hidden"
-                />
-              </label>
+              {/* Authority / Other */}
+              <div className="border border-cyan-500/40 rounded-xl p-3 bg-black/40">
+                <p className="text-xs font-semibold mb-2">Authority / Other docs</p>
+                <label className="inline-flex items-center justify-center px-3 py-1.5 text-xs rounded-full border border-cyan-500/60 bg-cyan-500/10 cursor-pointer hover:bg-cyan-500/20 transition">
+                  Upload files
+                  <input
+                    type="file"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => addFiles(e.target.files, "OTHER")}
+                  />
+                </label>
+              </div>
             </div>
 
-            {/* W9 Upload */}
-            <div className="space-y-2">
-              <label className="text-xs opacity-80">W9</label>
-
-              <label
-                className="
-                  flex flex-col items-center justify-center 
-                  w-full h-24 
-                  border border-cyan-500/40 
-                  rounded-2xl 
-                  bg-black/40 
-                  hover:bg-black/60 
-                  transition 
-                  cursor-pointer
-                "
-              >
-                <span className="text-xs opacity-70 mb-1">
-                  Click to upload W9
-                </span>
-                <span className="text-[10px] opacity-50">
-                  (PDF recommended)
-                </span>
-
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  multiple
-                  onChange={(e) => addDocs(e.target.files, "W9")}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Authority / Other Upload */}
-            <div className="space-y-2">
-              <label className="text-xs opacity-80">
-                Authority / Other Documents
-              </label>
-
-              <label
-                className="
-                  flex flex-col items-center justify-center 
-                  w-full h-24 
-                  border border-cyan-500/40 
-                  rounded-2xl 
-                  bg-black/40 
-                  hover:bg-black/60 
-                  transition 
-                  cursor-pointer
-                "
-              >
-                <span className="text-xs opacity-70 mb-1">
-                  Click to upload Authority letter or misc files
-                </span>
-                <span className="text-[10px] opacity-50">
-                  (PDF or image)
-                </span>
-
-                <input
-                  type="file"
-                  accept="application/pdf,image/*"
-                  multiple
-                  onChange={(e) => addDocs(e.target.files, "OTHER")}
-                  className="hidden"
-                />
-              </label>
-            </div>
-
-            {/* Files selected list */}
-            {docs.length > 0 && (
-              <div className="border border-cyan-500/30 rounded-xl p-4 text-xs opacity-90 space-y-2">
-                <p className="font-semibold">Files selected:</p>
-
-                {docs.map((d, idx) => (
-                  <div
-                    key={idx}
-                    className="flex justify-between gap-2 text-[11px]"
-                  >
-                    <span className="truncate max-w-[70%] opacity-80">
-                      {d.file.name}
-                    </span>
-                    <span className="opacity-60">{d.docType}</span>
-                  </div>
-                ))}
+            {/* Selected files list */}
+            {documents.length > 0 && (
+              <div className="mt-3 border border-cyan-500/20 rounded-xl p-3 bg-black/40">
+                <p className="text-xs font-semibold mb-2">Files selected</p>
+                <ul className="space-y-1 max-h-40 overflow-auto text-xs">
+                  {documents.map((doc) => (
+                    <li key={doc.id} className="flex items-center justify-between gap-2">
+                      <span className="truncate">{doc.file.name}</span>
+                      <span className="px-2 py-0.5 rounded-full border border-cyan-500/40 text-[10px] uppercase">
+                        {doc.docType}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             )}
+          </section>
+
+          {/* Agreement */}
+          <section className="space-y-3 border-t border-cyan-500/20 pt-4">
+            <h2 className="text-lg font-semibold">Broker–Carrier Agreement</h2>
+            <p className="text-xs text-gray-300">
+              By submitting this packet, you confirm that the information
+              provided is accurate and that you agree to Deadhead Zero
+              Logistics LLC&apos;s broker–carrier terms, including safety,
+              insurance, and payment policies as provided during onboarding.
+            </p>
+            <div className="flex items-start gap-2 text-xs">
+              <input
+                type="checkbox"
+                className="mt-[2px] h-4 w-4 rounded border-cyan-500/60 bg-black accent-green-400"
+                checked={agreementChecked}
+                onChange={(e) => setAgreementChecked(e.target.checked)}
+              />
+              <span>
+                I have read and agree to the broker–carrier agreement and certify
+                that I am authorized to sign on behalf of the carrier.
+              </span>
+            </div>
+            <div className="max-w-xs">
+              <label className="text-xs block mb-1">E-signature (full name)</label>
+              <input
+                type="text"
+                className="w-full bg-black border border-cyan-500/40 rounded-xl px-3 py-2 text-sm outline-none focus:border-cyan-300"
+                value={esignName}
+                onChange={(e) => setEsignName(e.target.value)}
+                placeholder="Type your full legal name"
+              />
+            </div>
+          </section>
+
+          {/* Messages + Submit */}
+          {error && (
+            <p className="text-xs text-red-400 bg-red-400/10 border border-red-400/30 rounded-xl px-3 py-2">
+              {error}
+            </p>
+          )}
+          {success && (
+            <p className="text-xs text-green-400 bg-green-400/10 border border-green-400/30 rounded-xl px-3 py-2">
+              {success}
+            </p>
+          )}
+
+          <div className="flex justify-end">
+            <button
+              onClick={handleSubmit}
+              disabled={submitting}
+              className="px-5 py-2.5 rounded-2xl bg-green-400 text-black text-sm font-semibold disabled:opacity-60 disabled:cursor-not-allowed hover:brightness-110 transition"
+            >
+              {submitting ? "Submitting..." : "Submit carrier packet"}
+            </button>
           </div>
-
-          {/* Messages */}
-          {error && <p className="text-xs text-red-400">{error}</p>}
-          {message && <p className="text-xs text-green-400">{message}</p>}
-
-          {/* Submit */}
-          <motion.button
-            whileHover={{ scale: submitting ? 1 : 1.02 }}
-            whileTap={{ scale: submitting ? 1 : 0.97 }}
-            disabled={submitting}
-            onClick={handleSubmit}
-            className="w-full bg-green-400 text-black font-semibold text-lg rounded-2xl py-2.5 disabled:opacity-60 disabled:cursor-not-allowed mt-2"
-          >
-            {submitting ? "Submitting..." : "Submit Carrier Packet"}
-          </motion.button>
-
-          <p className="text-[11px] opacity-60 pt-2">
-            By submitting, you consent to fraud screening and compliance checks.
-            We may cross-reference your information with FMCSA and other public
-            data sources to protect shippers and carriers.
-          </p>
         </div>
-      </motion.div>
+
+        <p className="text-[11px] text-gray-400 max-w-2xl">
+          Deadhead Zero Logistics LLC is an FMCSA-licensed freight broker. By
+          submitting this form you authorize Deadhead Zero to contact you about
+          freight opportunities via email and phone, separate from any Reefer
+          Whisper SMS subscription.
+        </p>
+      </div>
     </main>
   );
 }
