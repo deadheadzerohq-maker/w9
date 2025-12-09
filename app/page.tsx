@@ -34,14 +34,14 @@ export default function HomePage() {
 
     if (!phoneIsValid(phone)) {
       setError(
-        "Enter your phone in full international format, e.g. +17172384576 (no spaces or dashes). "
+        "Enter your phone in full international format, e.g. +17172384576 (no spaces or dashes)."
       );
       return;
     }
 
     if (!smsConsent) {
       setError(
-        "Please check the box to consent to receiving daily SMS messages from Deadhead Zero Reefer Whisper."
+        "Please check the box to give express written consent to receive daily SMS messages from Deadhead Zero Reefer Whisper."
       );
       return;
     }
@@ -89,6 +89,15 @@ export default function HomePage() {
           <h1 className="text-4xl font-bold">Deadhead Zero Reefer Whisper</h1>
           <p className="text-lg opacity-80">
             One high-signal reefer lane text every morning at 6 AM Eastern.
+          </p>
+          <p className="text-xs opacity-60">
+            Reefer Whisper is an optional standalone SMS subscription from
+            Deadhead Zero Logistics LLC. Participation in this SMS program is{" "}
+            <span className="font-semibold">
+              not required to use any other Deadhead Zero Logistics LLC
+              services
+            </span>
+            .
           </p>
         </div>
 
@@ -145,13 +154,20 @@ export default function HomePage() {
               className="mt-[2px] h-4 w-4 rounded border-cyan-500/60 bg-black accent-green-400"
             />
             <label htmlFor="sms-consent" className="cursor-pointer">
-              By checking this box, I agree to receive 1 automated SMS message
-              per day from Deadhead Zero Reefer Whisper containing reefer market
-              insights and lane opportunities. Message and data rates may apply.
-              Reply <span className="font-semibold">STOP</span> to cancel,{" "}
-              <span className="font-semibold">HELP</span> for help. I understand
-              this SMS service is informational only and does not involve
-              financial transactions, negotiations, or rate brokering.
+              By checking this box, I give{" "}
+              <span className="font-semibold">express written consent</span> to
+              receive <span className="font-semibold">1 automated</span>{" "}
+              informational SMS message per day from{" "}
+              <span className="font-semibold">Deadhead Zero Reefer Whisper</span>{" "}
+              at the phone number I provided, containing reefer market insights
+              and lane opportunities. This SMS subscription is{" "}
+              <span className="font-semibold">
+                optional and not required to use any other Deadhead Zero
+                Logistics LLC services
+              </span>
+              . Message and data rates may apply. Reply{" "}
+              <span className="font-semibold">STOP</span> to cancel,{" "}
+              <span className="font-semibold">HELP</span> for help.
             </label>
           </div>
 
@@ -168,9 +184,13 @@ export default function HomePage() {
               I am interested in being contacted by Deadhead Zero Logistics LLC
               (FMCSA-licensed freight broker, MC XXXXXXX) about freight
               opportunities via email and voice calls. I understand brokerage
-              communication will <span className="font-semibold">not</span> use
-              this SMS number and will be handled separately from Reefer Whisper
-              texts.
+              communication is{" "}
+              <span className="font-semibold">separate</span> from Reefer
+              Whisper and will{" "}
+              <span className="font-semibold">
+                not use this SMS subscription
+              </span>{" "}
+              or this phone number for marketing texts.
             </label>
           </div>
 
@@ -187,7 +207,7 @@ export default function HomePage() {
           {/* CONTACT INFO */}
           <p className="text-xs opacity-60 pt-2 text-center">
             Contact us:{" "}
-            <span className="underline">info@deadheadzero.com</span>
+              <span className="underline">info@deadheadzero.com</span>
           </p>
         </div>
 
@@ -204,19 +224,19 @@ export default function HomePage() {
             opportunities.
           </p>
           <p>
-            Reefer Whisper is our subscription SMS intelligence product. It
-            sends one concise daily text message with high-signal reefer market
-            insights based on public data sources and industry signals. Reefer
-            Whisper itself is a technology-only insights service and does not
-            broker freight, negotiate rates, or hold customer funds.
+            Reefer Whisper is our{" "}
+            <span className="font-semibold">optional</span> subscription SMS
+            intelligence product. It sends one concise daily text message with
+            high-signal reefer market insights based on public data sources and
+            industry signals. Reefer Whisper itself is a technology-only
+            insights service and does not broker freight, negotiate rates, or
+            hold customer funds.
           </p>
           <p>
             Separately, Deadhead Zero Logistics LLC also operates an
             FMCSA-licensed freight brokerage (MC XXXXXXX) that communicates with
-            carriers and shippers via email and phone calls, not SMS. If you
-            opt in above, we may invite you to complete a secure carrier packet
-            via our compliance partner, Highway, and contact you for future load
-            opportunities.
+            carriers and shippers via email and phone calls, not SMS. Brokerage
+            participation does not require subscribing to Reefer Whisper.
           </p>
         </section>
       </motion.div>
