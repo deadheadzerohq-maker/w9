@@ -1,7 +1,7 @@
 // app/api/carrier/onboard/route.ts
 
 import { NextResponse } from "next/server";
-import supabaseAdmin from "@/lib/supabaseAdmin"; // ✅ default import
+import supabaseAdmin from "@/lib/supabaseAdmin";
 import { runGrokFraudCheck } from "@/lib/grokFraud";
 
 export async function POST(req: Request) {
@@ -37,10 +37,6 @@ export async function POST(req: Request) {
       preferredLanes,
       fleetSize,
 
-      factoringCompanyName,
-      factoringContactEmail,
-      factoringContactPhone,
-      paymentTerms,
       operatingRegions,
 
       agreementChecked,
@@ -62,6 +58,9 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
+
+    // You pay carriers within 72 hours – hard-set this
+    const paymentTerms = "72 hours";
 
     // 1) Insert carrier
     const now = new Date().toISOString();
@@ -92,9 +91,6 @@ export async function POST(req: Request) {
         preferred_lanes: preferredLanes,
         fleet_size: fleetSize,
 
-        factoring_company_name: factoringCompanyName,
-        factoring_contact_email: factoringContactEmail,
-        factoring_contact_phone: factoringContactPhone,
         payment_terms: paymentTerms,
         operating_regions: operatingRegions,
 
@@ -134,11 +130,32 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3) Grok fraud/risk scoring (best-effort, non-blocking)
+    // 3) Grok fraud/risk scoring – pass the shape it expects
     try {
       const grokResult = await runGrokFraudCheck({
-        carrier,
-        documents,
+        legalName,
+        dbaName,
+        mcNumber,
+        dotNumber,
+        email,
+        phone,
+        addressLine1,
+        addressLine2,
+        city,
+        state,
+        postalCode,
+        remitAddress,
+        taxId,
+        primaryContactName,
+        primaryContactTitle,
+        dispatchPhone,
+        afterHoursPhone,
+        equipmentType,
+        preferredLanes,
+        fleetSize,
+        paymentTerms,
+        operatingRegions,
+        documents: Array.isArray(documents) ? documents : [],
       });
 
       if (grokResult) {
