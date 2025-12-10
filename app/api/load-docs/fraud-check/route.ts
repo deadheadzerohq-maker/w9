@@ -64,7 +64,8 @@ export async function POST(request: Request) {
     };
 
     // 4) Call Grok fraud engine
-    const result = await runGrokFraudCheck(grokPayload);
+    // Cast to any so we can reuse runGrokFraudCheck with a different payload shape
+    const result = await (runGrokFraudCheck as any)(grokPayload);
 
     // Normalize result shape
     const score =
