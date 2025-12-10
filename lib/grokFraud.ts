@@ -1,4 +1,4 @@
-// app/lib/grokFraud.ts
+// lib/grokFraud.ts
 // @ts-nocheck
 
 /**
@@ -56,14 +56,14 @@ export async function runGrokFraudCheck(payload: {
     mimeType: string;
   }[];
 }) {
+  // Node / Next env only – no Deno here
   const apiKey =
     process.env.GROK_API_KEY ||
     process.env.XAI_API_KEY ||
-    Deno?.env?.get?.("GROK_API_KEY") ||
     "";
 
   if (!apiKey) {
-    console.error("Missing GROK_API_KEY — returning fallback fraud result.");
+    console.error("Missing GROK_API_KEY/XAI_API_KEY — returning fallback fraud result.");
     return {
       riskScore: 50,
       riskLabel: "medium",
@@ -71,7 +71,6 @@ export async function runGrokFraudCheck(payload: {
     };
   }
 
-  // Construct prompt
   const systemPrompt = `
 You are an expert carrier compliance and onboarding auditor for a U.S. FMCSA-licensed freight brokerage.
 Your job is to detect missing documents, mismatched identity information, suspicious patterns, fraud indicators,
@@ -90,7 +89,6 @@ Risk scoring guidelines:
 - 26-50 = moderate / acceptable
 - 51-75 = elevated concern (missing docs, mismatched MC/DOT, unverifiable address)
 - 76-100 = high risk (fraud indicators, fake COI/W9 filenames, inconsistent identity, bad MC history)
-
 `;
 
   const userPrompt = `
@@ -122,7 +120,7 @@ Return only the JSON object. No commentary. No extra text.
     });
 
     if (!resp.ok) {
-      console.error("Grok API error:", await resp.text());
+      console.error("Grok API error status:", resp.status, await resp.text());
       return {
         riskScore: 50,
         riskLabel: "medium",
@@ -131,8 +129,8 @@ Return only the JSON object. No commentary. No extra text.
     }
 
     const data = await resp.json();
-
     const raw = data?.choices?.[0]?.message?.content?.trim();
+
     if (!raw) {
       console.error("No Grok message.content returned:", data);
       return {
@@ -142,7 +140,7 @@ Return only the JSON object. No commentary. No extra text.
       };
     }
 
-    // Extract JSON (some LLMs wrap output with ```json)
+    // Strip ```json fences if present
     const jsonStr = raw.replace(/```json|```/g, "").trim();
 
     try {
@@ -157,14 +155,13 @@ Return only the JSON object. No commentary. No extra text.
       }
 
       console.error("Parsed JSON missing required fields:", parsed);
-
       return {
         riskScore: 50,
         riskLabel: "medium",
         summary: "LLM_JSON_SHAPE_INVALID",
       };
     } catch (err) {
-      console.error("Error parsing Grok JSON:", err, raw);
+      console.error("Error parsing Grok JSON:", err, "raw content:", raw);
       return {
         riskScore: 50,
         riskLabel: "medium",
