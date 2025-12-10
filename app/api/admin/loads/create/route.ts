@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
-import { buildLaneDescription, formatDateTime } from "@/lib/emailHelpers";
+import { formatDateTime } from "@/lib/emailHelpers";
 import { randomUUID } from "crypto";
 
 export const runtime = "nodejs";
@@ -19,6 +19,20 @@ function getBaseUrl(req: NextRequest) {
 
   const url = new URL(req.url);
   return `${url.protocol}//${url.host}`;
+}
+
+// Local helper to build a lane string from a load row
+function buildLaneFromLoad(load: any): string {
+  const origin = `${load.origin_city || ""}${
+    load.origin_state ? ", " + load.origin_state : ""
+  }`.trim();
+
+  const dest = `${load.dest_city || ""}${
+    load.dest_state ? ", " + load.dest_state : ""
+  }`.trim();
+
+  if (!origin && !dest) return "Unknown lane";
+  return `${origin || "Origin"} → ${dest || "Destination"}`;
 }
 
 export async function POST(req: NextRequest) {
@@ -127,13 +141,7 @@ export async function POST(req: NextRequest) {
     const load = inserted;
 
     // Lane + dates for email copy
-    const lane = buildLaneDescription({
-      origin_city: load.origin_city,
-      origin_state: load.origin_state,
-      dest_city: load.dest_city,
-      dest_state: load.dest_state,
-    });
-
+    const lane = buildLaneFromLoad(load);
     const prettyPickup = formatDateTime(load.pickup_date);
     const prettyDelivery = formatDateTime(load.delivery_date);
 
@@ -141,7 +149,9 @@ export async function POST(req: NextRequest) {
 
     if (resend) {
       try {
-        const subject = `Documents needed for load ${load.reference || load.id} – Deadhead Zero`;
+        const subject = `Documents needed for load ${
+          load.reference || load.id
+        } – Deadhead Zero`;
 
         const text = [
           `Carrier: ${load.carrier_name || ""}`,
@@ -163,7 +173,9 @@ export async function POST(req: NextRequest) {
 
               <div style="border-radius:12px;border:1px solid #1f2937;background:#020617;padding:16px;margin-bottom:16px;">
                 <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;">Load reference</p>
-                <p style="margin:0 0 8px;font-size:14px;">${load.reference || `#${load.id}`}</p>
+                <p style="margin:0 0 8px;font-size:14px;">${
+                  load.reference || `#${load.id}`
+                }</p>
                 <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;">Lane</p>
                 <p style="margin:0 0 8px;font-size:14px;">${lane}</p>
                 <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;">Pickup / Delivery</p>
@@ -204,7 +216,10 @@ export async function POST(req: NextRequest) {
         });
 
         if (resendError) {
-          console.error("Resend error sending load creation email:", resendError);
+          console.error(
+            "Resend error sending load creation email:",
+            resendError,
+          );
           emailError = "Load created, but failed to send email.";
         }
       } catch (err: any) {
