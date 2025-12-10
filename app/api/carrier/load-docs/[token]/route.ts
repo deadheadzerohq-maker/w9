@@ -3,9 +3,20 @@
 import { NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { runGrokFraudCheck } from "@/lib/grokFraud";
+import { Resend } from "resend";
+import { formatDateTime, buildLaneDescription } from "@/lib/emailHelpers";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+// ---- Initialize Resend ----
+const resendApiKey = process.env.RESEND_API_KEY;
+if (!resendApiKey) {
+  console.error(
+    "[load-docs] RESEND_API_KEY is not set. Docs-received emails will be skipped.",
+  );
+}
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 export async function POST(
   req: Request,
@@ -35,7 +46,7 @@ export async function POST(
     const bucket = "load-documents";
     const inserted: any[] = [];
 
-    // Optional: load context for Grok
+    // ---- Load context for Grok + notifications ----
     const { data: load, error: loadError } = await supabaseAdmin
       .from("loads")
       .select("*")
@@ -128,9 +139,9 @@ export async function POST(
           state: load?.origin_state ?? "",
           postalCode: "",
           country: "US",
-          lane: `${load?.origin_city ?? ""}, ${load?.origin_state ?? ""} -> ${
-            load?.dest_city ?? ""
-          }, ${load?.dest_state ?? ""}`,
+          lane: `${load?.origin_city ?? ""}, ${
+            load?.origin_state ?? ""
+          } -> ${load?.dest_city ?? ""}, ${load?.dest_state ?? ""}`,
           pickupDate: load?.pickup_date ?? null,
           deliveryDate: load?.delivery_date ?? null,
           reference: load?.reference ?? null,
@@ -181,6 +192,90 @@ export async function POST(
       }
 
       inserted.push(pendingRow);
+    }
+
+    // ---- Docs-received email + status update (non-fatal) ----
+    // If you ONLY want this when docType is POD, wrap in:
+    // if (docType.toLowerCase() === "pod") { ... }
+    if (load && resend) {
+      try {
+        const laneDesc = buildLaneDescription(
+          load.origin_city,
+          load.origin_state,
+          load.dest_city,
+          load.dest_state,
+        );
+
+        const pickupPretty = load.pickup_date
+          ? formatDateTime(load.pickup_date)
+          : null;
+
+        const recipients: string[] = [];
+        if (load.carrier_email) recipients.push(load.carrier_email);
+        const cc: string[] = [];
+        if (load.shipper_email) cc.push(load.shipper_email);
+
+        if (recipients.length) {
+          const subject = `Documents received for load ${
+            load.reference || load.id
+          } – Deadhead Zero`;
+
+          const textLines = [
+            "Documents have been uploaded for your load.",
+            "",
+            `Lane: ${laneDesc}`,
+            pickupPretty ? `Pickup: ${pickupPretty}` : "",
+            `Document type uploaded: ${docType}`,
+            "",
+            "Our team will review the paperwork and mark the load ready for invoicing.",
+            "",
+            "Thank you,",
+            "Deadhead Zero Logistics LLC",
+          ].filter(Boolean);
+
+          await resend.emails.send({
+            from: "Deadhead Zero <info@deadheadzero.com>",
+            to: recipients,
+            cc: cc.length ? cc : undefined,
+            subject,
+            text: textLines.join("\n"),
+          });
+        } else {
+          console.warn(
+            "[load-docs] No carrier_email on load; skipping docs-received email.",
+          );
+        }
+
+        // Update load status to docs_received (non-blocking if it fails)
+        const { error: updateError } = await supabaseAdmin
+          .from("loads")
+          .update({ status: "docs_received" })
+          .eq("id", load.id);
+
+        if (updateError) {
+          console.error(
+            "[load-docs] Failed to update load status to docs_received:",
+            updateError,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "[load-docs] docs-received notification error (non-fatal):",
+          err,
+        );
+        // Don't fail the upload if email/status update fail
+      }
+    } else {
+      if (!load) {
+        console.warn(
+          "[load-docs] No load found for token; skipping docs-received email.",
+        );
+      }
+      if (!resend) {
+        console.warn(
+          "[load-docs] Resend not initialized; skipping docs-received email.",
+        );
+      }
     }
 
     return NextResponse.json({ ok: true, inserted }, { status: 200 });
