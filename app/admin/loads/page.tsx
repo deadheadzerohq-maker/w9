@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type LoadRow = {
-  id: string; // from API (can be numeric in DB, string here is fine)
+  id: number; // ✅ numeric id
   token: string;
   reference: string | null;
   status: string | null;
@@ -36,7 +36,7 @@ export default function AdminLoadsPage() {
   const [search, setSearch] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<number | null>(null); // ✅ number | null
 
   const fetchLoads = async () => {
     setLoading(true);
@@ -104,7 +104,10 @@ export default function AdminLoadsPage() {
   const isReadyToInvoice = (status: string | null) =>
     (status || "").toLowerCase() === "ready_to_invoice";
 
-  const handleToggleReady = async (e: React.MouseEvent, load: LoadRow) => {
+  const handleToggleReady = async (
+    e: React.MouseEvent,
+    load: LoadRow,
+  ) => {
     e.stopPropagation(); // don't trigger row navigation
 
     const currentlyReady = isReadyToInvoice(load.status);
@@ -190,7 +193,7 @@ export default function AdminLoadsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search ref, shipper, carrier, lane…"
-              className="bg-slate-950 border border-slate-700 rounded-full px-3 py-1 text-xs text-slate-100 min-w-[200px]"
+            className="bg-slate-950 border border-slate-700 rounded-full px-3 py-1 text-xs text-slate-100 min-w-[200px]"
             />
             <button
               type="button"
