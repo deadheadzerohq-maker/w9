@@ -104,7 +104,7 @@ export async function POST(request: Request) {
 
       resend.emails
         .send({
-          from: "Deadhead Zero <no-reply@deadheadzero.com>",
+          from: "Deadhead Zero <info@deadheadzero.com>",
           to: [carrierEmail],
           subject,
           text: textLines.join("\n"),
