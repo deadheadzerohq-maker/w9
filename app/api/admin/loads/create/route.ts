@@ -132,8 +132,18 @@ export async function POST(req: NextRequest) {
 
     if (insertError) {
       console.error("Error inserting load:", insertError);
+      // Surface the real Postgres/Supabase error so we can see it in the UI
       return NextResponse.json(
-        { ok: false, error: "Database error creating load." },
+        {
+          ok: false,
+          error: "Supabase insert error",
+          supabase: {
+            message: insertError.message,
+            details: insertError.details,
+            hint: insertError.hint,
+            code: insertError.code,
+          },
+        },
         { status: 500 },
       );
     }
