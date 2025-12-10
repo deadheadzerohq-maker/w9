@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
+import { formatDateTime, buildLaneDescription } from "@/lib/emailHelpers";
 
 // ---- Initialize Resend ----
 const resendApiKey = process.env.RESEND_API_KEY;
@@ -14,38 +15,6 @@ const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
 // ---- Force Node runtime ----
 export const runtime = "nodejs";
-
-// ---- Helpers ----
-function formatDateTime(value?: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return value;
-
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function buildLaneDescription(
-  originCity?: string | null,
-  originState?: string | null,
-  destCity?: string | null,
-  destState?: string | null,
-): string {
-  const origin =
-    originCity && originState
-      ? `${originCity}, ${originState}`
-      : originCity || originState || "Origin";
-  const dest =
-    destCity && destState
-      ? `${destCity}, ${destState}`
-      : destCity || destState || "Destination";
-  return `${origin} → ${dest}`;
-}
 
 function buildHtmlEmail(params: {
   carrierName?: string | null;
@@ -167,7 +136,7 @@ export async function POST(request: Request) {
     const {
       reference,
       shipperName,
-      shipperEmail,   // NEW: for CC
+      shipperEmail, // CC
       receiverName,
       originCity,
       originState,
@@ -178,7 +147,7 @@ export async function POST(request: Request) {
       carrierName,
       carrierEmail,
       rate,
-      rateConUrl,     // NEW: optional URL to rate-con PDF
+      rateConUrl, // optional PDF URL
     } = body || {};
 
     if (!carrierEmail || !originCity || !destCity || !pickupDate) {
@@ -238,7 +207,6 @@ export async function POST(request: Request) {
       token: load.token,
     });
 
-    // ---- Email via Resend ----
     if (!resend) {
       console.error("[loads/create] Resend not initialized – skipping email.");
     } else {
@@ -270,8 +238,12 @@ export async function POST(request: Request) {
         `Deadhead Zero Logistics LLC`,
       ].filter(Boolean);
 
-      // Optional PDF attachment if rateConUrl is provided
-      let attachments: { filename: string; content: string }[] | undefined;
+      let attachments:
+        | {
+            filename: string;
+            content: string;
+          }[]
+        | undefined;
 
       if (rateConUrl) {
         try {
