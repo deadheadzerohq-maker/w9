@@ -3,11 +3,14 @@
 import { NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 
-export async function GET(request: Request) {
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
+export async function GET(req: Request) {
   try {
-    const url = new URL(request.url);
+    const url = new URL(req.url);
+    const search = url.searchParams.get("search")?.trim() || "";
     const status = url.searchParams.get("status") || "all";
-    const q = url.searchParams.get("q") || "";
 
     let query = supabaseAdmin
       .from("loads")
@@ -31,38 +34,51 @@ export async function GET(request: Request) {
         created_at
       `,
       )
-      .order("created_at", { ascending: false })
-      .limit(200);
+      .order("created_at", { ascending: false });
 
     if (status && status !== "all") {
       query = query.eq("status", status);
     }
 
-    if (q) {
-      const pattern = `%${q}%`;
+    if (search) {
+      // basic multi-field search
+      const pattern = `%${search}%`;
       query = query.or(
-        `reference.ilike.${pattern},carrier_name.ilike.${pattern},carrier_email.ilike.${pattern},origin_city.ilike.${pattern},dest_city.ilike.${pattern}`,
+        [
+          `reference.ilike.${pattern}`,
+          `shipper_name.ilike.${pattern}`,
+          `receiver_name.ilike.${pattern}`,
+          `carrier_name.ilike.${pattern}`,
+          `origin_city.ilike.${pattern}`,
+          `dest_city.ilike.${pattern}`,
+        ].join(","),
       );
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("admin/loads/list error:", error);
+      console.error("Error fetching loads:", error);
       return NextResponse.json(
-        { ok: false, error: "Failed to load loads" },
+        {
+          ok: false,
+          error:
+            "Failed to fetch loads: " +
+            (error.message || error.details || "Unknown error"),
+        },
         { status: 500 },
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      loads: data || [],
-    });
-  } catch (error) {
-    console.error("admin/loads/list unexpected error:", error);
+    return NextResponse.json({ ok: true, loads: data ?? [] }, { status: 200 });
+  } catch (err: any) {
+    console.error("Fatal error in /api/admin/loads/list:", err);
     return NextResponse.json(
-      { ok: false, error: "Unexpected error" },
+      {
+        ok: false,
+        error:
+          "Unexpected error listing loads: " + (err?.message || String(err)),
+      },
       { status: 500 },
     );
   }
