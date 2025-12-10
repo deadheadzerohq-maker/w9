@@ -5,9 +5,22 @@ import { randomUUID } from "crypto";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY || "");
+// Make sure we know at startup whether the key is present
+const resendApiKey = process.env.RESEND_API_KEY;
+if (!resendApiKey) {
+  console.error(
+    "[loads/create] RESEND_API_KEY is not set. Emails will be skipped.",
+  );
+}
+
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+
+// Force Node runtime so crypto + Resend work as expected
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  console.log("[loads/create] POST hit");
+
   try {
     const body = await request.json();
 
@@ -27,6 +40,16 @@ export async function POST(request: Request) {
     } = body || {};
 
     if (!carrierEmail || !originCity || !destCity || !pickupDate) {
+      console.warn(
+        "[loads/create] Missing required fields:",
+        JSON.stringify({
+          carrierEmail,
+          originCity,
+          destCity,
+          pickupDate,
+        }),
+      );
+
       return NextResponse.json(
         {
           ok: false,
@@ -68,20 +91,28 @@ export async function POST(request: Request) {
       .single();
 
     if (insertError || !load) {
-      console.error("loads/create insert error:", insertError);
+      console.error("[loads/create] Supabase insert error:", insertError);
       return NextResponse.json(
         { ok: false, error: "Failed to create load" },
         { status: 500 },
       );
     }
 
-    // Fire-and-forget email to carrier with upload link (non-fatal if it fails)
-    if (process.env.RESEND_API_KEY) {
+    console.log(
+      "[loads/create] Load created with id, token:",
+      load.id,
+      load.token,
+    );
+
+    // === Email sending via Resend ===
+    if (!resend) {
+      console.error(
+        "[loads/create] Resend client not initialized – skipping email.",
+      );
+    } else {
       const laneDesc = `${originCity || "Origin"}${
         originState ? ", " + originState : ""
-      } → ${destCity || "Destination"}${
-        destState ? ", " + destState : ""
-      }`;
+      } → ${destCity || "Destination"}${destState ? ", " + destState : ""}`;
 
       const subject = `Upload BOL/POD for load ${
         reference || load.id
@@ -104,20 +135,21 @@ export async function POST(request: Request) {
         `Deadhead Zero Logistics LLC`,
       ].filter(Boolean);
 
-      resend.emails
-        .send({
+      try {
+        const result = await resend.emails.send({
           from: "Deadhead Zero <info@deadheadzero.com>",
           to: [carrierEmail],
           subject,
           text: textLines.join("\n"),
-        })
-        .catch((err) => {
-          console.error("loads/create email error (non-fatal):", err);
         });
-    } else {
-      console.warn(
-        "RESEND_API_KEY not set; skipping carrier upload-link email.",
-      );
+
+        console.log(
+          "[loads/create] Resend email result:",
+          JSON.stringify(result),
+        );
+      } catch (err) {
+        console.error("[loads/create] Resend email error:", err);
+      }
     }
 
     return NextResponse.json({
@@ -127,7 +159,7 @@ export async function POST(request: Request) {
       uploadUrl,
     });
   } catch (error) {
-    console.error("loads/create unexpected error:", error);
+    console.error("[loads/create] unexpected error:", error);
     return NextResponse.json(
       { ok: false, error: "Unexpected error" },
       { status: 500 },
