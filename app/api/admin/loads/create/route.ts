@@ -1,305 +1,237 @@
 // app/api/admin/loads/create/route.ts
 
-import { NextResponse } from "next/server";
-import { randomUUID } from "crypto";
+import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
-import { formatDateTime, buildLaneDescription } from "@/lib/emailHelpers";
+import { buildLaneDescription, formatDateTime } from "@/lib/emailHelpers";
+import { randomUUID } from "crypto";
 
-// ---- Initialize Resend ----
-const resendApiKey = process.env.RESEND_API_KEY;
-if (!resendApiKey) {
-  console.error("[loads/create] RESEND_API_KEY is not set. Emails will be skipped.");
-}
-const resend = resendApiKey ? new Resend(resendApiKey) : null;
-
-// ---- Force Node runtime ----
 export const runtime = "nodejs";
 
-function buildHtmlEmail(params: {
-  carrierName?: string | null;
-  laneDesc: string;
-  pickupDate?: string | null;
-  deliveryDate?: string | null;
-  uploadUrl: string;
-}) {
-  const { carrierName, laneDesc, pickupDate, deliveryDate, uploadUrl } = params;
+const resend =
+  process.env.RESEND_API_KEY && process.env.RESEND_API_KEY.length > 0
+    ? new Resend(process.env.RESEND_API_KEY)
+    : null;
 
-  const pickupPretty = pickupDate ? formatDateTime(pickupDate) : null;
-  const deliveryPretty = deliveryDate ? formatDateTime(deliveryDate) : null;
+function getBaseUrl(req: NextRequest) {
+  const envBase = process.env.NEXT_PUBLIC_BASE_URL;
+  if (envBase && envBase.length > 0) return envBase.replace(/\/+$/, "");
 
-  return `
-  <!doctype html>
-  <html>
-    <head>
-      <meta charset="utf-8" />
-      <title>Deadhead Zero – Upload Docs</title>
-    </head>
-    <body style="margin:0;padding:0;background:#050509;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#f9fafb;">
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#050509;padding:24px 0;">
-        <tr>
-          <td align="center">
-            <table width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;background:#050509;border-radius:16px;border:1px solid #111827;box-shadow:0 24px 80px rgba(0,0,0,0.65);overflow:hidden;">
-              <tr>
-                <td style="padding:20px 24px;border-bottom:1px solid #111827;background:radial-gradient(circle at top, #0ea5e9 0, #020617 55%);">
-                  <div style="font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:#a5f3fc;margin-bottom:4px;">
-                    Deadhead Zero Logistics LLC
-                  </div>
-                  <div style="font-size:20px;font-weight:600;color:#e5e7eb;">
-                    Upload BOL / POD & Docs
-                  </div>
-                  <div style="font-size:13px;color:#cbd5f5;margin-top:4px;">
-                    Secure upload link for your reefer load
-                  </div>
-                </td>
-              </tr>
-
-              <tr>
-                <td style="padding:20px 24px;">
-                  <p style="margin:0 0 12px 0;font-size:14px;color:#e5e7eb;">
-                    ${carrierName ? `Hi <strong>${carrierName}</strong>,` : "Hi there,"}
-                  </p>
-
-                  <p style="margin:0 0 16px 0;font-size:14px;color:#d1d5db;line-height:1.6;">
-                    Deadhead Zero has created a new load for you. Please upload all paperwork (rate confirmation, BOL, POD, lumper receipts, etc.) using the secure link below. No login required.
-                  </p>
-
-                  <p style="margin:0 0 18px 0;">
-                    <a href="${uploadUrl}" style="display:inline-block;background:#0ea5e9;color:#020617;font-size:14px;font-weight:600;padding:10px 18px;border-radius:999px;text-decoration:none;">
-                      Upload documents
-                    </a>
-                  </p>
-
-                  <p style="margin:0 0 10px 0;font-size:13px;color:#9ca3af;">
-                    Or paste this link into your browser:<br/>
-                    <span style="word-break:break-all;color:#e5e7eb;">${uploadUrl}</span>
-                  </p>
-
-                  <table cellpadding="0" cellspacing="0" style="margin-top:18px;border-collapse:collapse;width:100%;">
-                    <tr>
-                      <td colspan="2" style="font-size:13px;font-weight:600;color:#a5f3fc;padding-bottom:6px;border-bottom:1px solid #111827;">
-                        Load Details
-                      </td>
-                    </tr>
-                    <tr>
-                      <td style="font-size:13px;color:#9ca3af;padding-top:8px;width:120px;">Lane</td>
-                      <td style="font-size:13px;color:#e5e7eb;padding-top:8px;">${laneDesc}</td>
-                    </tr>
-                    ${
-                      pickupPretty
-                        ? `<tr>
-                      <td style="font-size:13px;color:#9ca3af;padding-top:4px;">Pickup</td>
-                      <td style="font-size:13px;color:#e5e7eb;padding-top:4px;">${pickupPretty}</td>
-                    </tr>`
-                        : ""
-                    }
-                    ${
-                      deliveryPretty
-                        ? `<tr>
-                      <td style="font-size:13px;color:#9ca3af;padding-top:4px;">Delivery</td>
-                      <td style="font-size:13px;color:#e5e7eb;padding-top:4px;">${deliveryPretty}</td>
-                    </tr>`
-                        : ""
-                    }
-                    <tr>
-                      <td style="font-size:13px;color:#9ca3af;padding-top:4px;">File Types</td>
-                      <td style="font-size:13px;color:#e5e7eb;padding-top:4px;">PDF, JPG, PNG</td>
-                    </tr>
-                  </table>
-
-                  <p style="margin:18px 0 0 0;font-size:12px;color:#6b7280;line-height:1.6;">
-                    If you weren’t expecting this email, you can ignore it. Deadhead Zero Logistics is a licensed freight broker and technology platform. This link only allows document upload for this specific load.
-                  </p>
-                </td>
-              </tr>
-
-              <tr>
-                <td style="padding:14px 24px;border-top:1px solid #111827;background:#020617;font-size:11px;color:#6b7280;">
-                  © ${new Date().getFullYear()} Deadhead Zero Logistics LLC · info@deadheadzero.com
-                </td>
-              </tr>
-            </table>
-          </td>
-        </tr>
-      </table>
-    </body>
-  </html>
-  `;
+  const url = new URL(req.url);
+  return `${url.protocol}//${url.host}`;
 }
 
-export async function POST(request: Request) {
-  console.log("[loads/create] POST hit");
-
+export async function POST(req: NextRequest) {
   try {
-    const body = await request.json();
+    const body = await req.json();
 
     const {
       reference,
       shipperName,
-      shipperEmail, // CC
+      shipperEmail,
       receiverName,
       originCity,
       originState,
       destCity,
       destState,
-      pickupDate,
-      deliveryDate,
+      pickupDate, // ISO date string from form
+      deliveryDate, // ISO date string from form
       carrierName,
       carrierEmail,
-      rate,
-      rateConUrl, // optional PDF URL
+      rate, // number or string
+      rateConUrl,
     } = body || {};
 
-    if (!carrierEmail || !originCity || !destCity || !pickupDate) {
-      console.warn("[loads/create] Missing required fields:", {
-        carrierEmail,
-        originCity,
-        destCity,
-        pickupDate,
-      });
-
+    if (!carrierEmail || !carrierName) {
       return NextResponse.json(
-        { ok: false, error: "Missing required fields." },
+        { ok: false, error: "Carrier name and email are required." },
+        { status: 400 },
+      );
+    }
+
+    if (!shipperName) {
+      return NextResponse.json(
+        { ok: false, error: "Shipper name is required." },
+        { status: 400 },
+      );
+    }
+
+    const pickupDateIso = pickupDate ? new Date(pickupDate).toISOString() : null;
+    const deliveryDateIso = deliveryDate
+      ? new Date(deliveryDate).toISOString()
+      : null;
+
+    if (pickupDate && Number.isNaN(new Date(pickupDate).getTime())) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid pickup date." },
+        { status: 400 },
+      );
+    }
+    if (deliveryDate && Number.isNaN(new Date(deliveryDate).getTime())) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid delivery date." },
+        { status: 400 },
+      );
+    }
+
+    const numericRate =
+      rate !== null && rate !== undefined && rate !== ""
+        ? Number(rate)
+        : null;
+    if (
+      numericRate !== null &&
+      (Number.isNaN(numericRate) || !Number.isFinite(numericRate))
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid rate amount." },
         { status: 400 },
       );
     }
 
     const token = randomUUID();
+    const baseUrl = getBaseUrl(req);
+    const uploadLink = `${baseUrl}/carrier/load-docs/${token}`;
 
-    const baseUrl =
-      process.env.NEXT_PUBLIC_BASE_URL || "https://deadheadzero.com";
-    const normalizedBase = baseUrl.replace(/\/$/, "");
-    const uploadUrl = `${normalizedBase}/carrier/load-docs/${token}`;
-
-    const { data: load, error: insertError } = await supabaseAdmin
+    // Insert load row
+    const { data: inserted, error: insertError } = await supabaseAdmin
       .from("loads")
       .insert({
         token,
-        reference,
+        reference: reference || null,
         status: "created",
         shipper_name: shipperName,
         shipper_email: shipperEmail || null,
-        receiver_name: receiverName,
-        origin_city: originCity,
-        origin_state: originState,
-        dest_city: destCity,
-        dest_state: destState,
-        pickup_date: pickupDate || null,
-        delivery_date: deliveryDate || null,
+        receiver_name: receiverName || null,
+        origin_city: originCity || null,
+        origin_state: originState || null,
+        dest_city: destCity || null,
+        dest_state: destState || null,
+        pickup_date: pickupDateIso,
+        delivery_date: deliveryDateIso,
         carrier_name: carrierName,
         carrier_email: carrierEmail,
-        rate,
-        upload_link: uploadUrl,
+        rate: numericRate,
+        upload_link: uploadLink,
       })
-      .select("id, token")
+      .select("*")
       .single();
 
-    if (insertError || !load) {
-      console.error("[loads/create] Supabase insert error:", insertError);
+    if (insertError) {
+      console.error("Error inserting load:", insertError);
       return NextResponse.json(
-        { ok: false, error: "Failed to create load." },
+        { ok: false, error: "Database error creating load." },
         { status: 500 },
       );
     }
 
-    console.log("[loads/create] Load created:", {
-      loadId: load.id,
-      token: load.token,
+    const load = inserted;
+
+    // Lane + dates for email copy
+    const lane = buildLaneDescription({
+      origin_city: load.origin_city,
+      origin_state: load.origin_state,
+      dest_city: load.dest_city,
+      dest_state: load.dest_state,
     });
 
-    if (!resend) {
-      console.error("[loads/create] Resend not initialized – skipping email.");
-    } else {
-      const laneDesc = buildLaneDescription(
-        originCity,
-        originState,
-        destCity,
-        destState,
-      );
+    const prettyPickup = formatDateTime(load.pickup_date);
+    const prettyDelivery = formatDateTime(load.delivery_date);
 
-      const subject = `Upload BOL/POD for load ${
-        reference || load.id
-      } – Deadhead Zero`;
+    let emailError: string | null = null;
 
-      const textLines = [
-        carrierName ? `Hi ${carrierName},` : "Hi,",
-        "",
-        `Please upload all documents for your load via this secure link:`,
-        uploadUrl,
-        "",
-        `Lane: ${laneDesc}`,
-        pickupDate ? `Pickup: ${formatDateTime(pickupDate)}` : "",
-        deliveryDate ? `Delivery: ${formatDateTime(deliveryDate)}` : "",
-        "",
-        `Supported file types: PDF, JPG, PNG.`,
-        `No login required.`,
-        "",
-        `Thank you,`,
-        `Deadhead Zero Logistics LLC`,
-      ].filter(Boolean);
-
-      let attachments:
-        | {
-            filename: string;
-            content: string;
-          }[]
-        | undefined;
-
-      if (rateConUrl) {
-        try {
-          console.log("[loads/create] Fetching rate-con PDF from:", rateConUrl);
-          const res = await fetch(rateConUrl);
-          if (!res.ok) {
-            throw new Error(
-              `Failed to fetch rateConUrl (status ${res.status})`,
-            );
-          }
-          const arrayBuf = await res.arrayBuffer();
-          const base64 = Buffer.from(arrayBuf).toString("base64");
-          attachments = [
-            {
-              filename: "rate-confirmation.pdf",
-              content: base64,
-            },
-          ];
-        } catch (err) {
-          console.error("[loads/create] rateConUrl attachment error:", err);
-        }
-      }
-
+    if (resend) {
       try {
-        const result = await resend.emails.send({
+        const subject = `Documents needed for load ${load.reference || load.id} – Deadhead Zero`;
+
+        const text = [
+          `Carrier: ${load.carrier_name || ""}`,
+          `Lane: ${lane}`,
+          `Pickup: ${prettyPickup}`,
+          `Delivery: ${prettyDelivery}`,
+          "",
+          `Please upload BOL, POD, and rate confirmation for this load:`,
+          uploadLink,
+        ].join("\n");
+
+        const html = `
+          <div style="background:#020617;color:#e5e7eb;padding:24px;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+            <div style="max-width:640px;margin:0 auto;border-radius:16px;border:1px solid #1f2937;background:#020617;padding:24px;">
+              <h1 style="font-size:20px;margin:0 0 8px;font-weight:600;">Deadhead Zero – Load Documents Requested</h1>
+              <p style="margin:0 0 16px;color:#9ca3af;font-size:14px;">
+                We created a new load and need your documents to get this moved and paid quickly.
+              </p>
+
+              <div style="border-radius:12px;border:1px solid #1f2937;background:#020617;padding:16px;margin-bottom:16px;">
+                <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;">Load reference</p>
+                <p style="margin:0 0 8px;font-size:14px;">${load.reference || `#${load.id}`}</p>
+                <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;">Lane</p>
+                <p style="margin:0 0 8px;font-size:14px;">${lane}</p>
+                <p style="margin:0 0 4px;font-size:13px;color:#9ca3af;">Pickup / Delivery</p>
+                <p style="margin:0;font-size:14px;">${prettyPickup} → ${prettyDelivery}</p>
+              </div>
+
+              <p style="margin:0 0 12px;font-size:14px;">
+                Please upload your <strong>BOL</strong>, <strong>POD</strong>, and <strong>rate confirmation</strong> at the link below:
+              </p>
+
+              <p style="margin:0 0 16px;">
+                <a href="${uploadLink}" style="display:inline-block;padding:10px 16px;border-radius:9999px;background:#22d3ee;color:#020617;font-size:14px;font-weight:500;text-decoration:none;">
+                  Upload documents
+                </a>
+              </p>
+
+              <p style="margin:0;font-size:12px;color:#6b7280;">
+                If the button doesn&apos;t work, copy and paste this URL into your browser:<br/>
+                <span style="color:#e5e7eb;font-family:monospace;font-size:12px;">${uploadLink}</span>
+              </p>
+
+              <p style="margin-top:24px;font-size:11px;color:#4b5563;">
+                Deadhead Zero Logistics LLC – Technology platform only. We do not handle customer funds.
+              </p>
+            </div>
+          </div>
+        `;
+
+        const to: string[] = [carrierEmail];
+        if (shipperEmail) to.push(shipperEmail);
+
+        const { error: resendError } = await resend.emails.send({
           from: "Deadhead Zero <info@deadheadzero.com>",
-          to: [carrierEmail],
-          cc: shipperEmail ? [shipperEmail] : undefined,
+          to,
           subject,
-          text: textLines.join("\n"),
-          html: buildHtmlEmail({
-            carrierName,
-            laneDesc,
-            pickupDate,
-            deliveryDate,
-            uploadUrl,
-          }),
-          attachments,
+          text,
+          html,
         });
 
-        console.log("[loads/create] Resend email result:", result);
-      } catch (err) {
-        console.error("[loads/create] Resend email error:", err);
+        if (resendError) {
+          console.error("Resend error sending load creation email:", resendError);
+          emailError = "Load created, but failed to send email.";
+        }
+      } catch (err: any) {
+        console.error("Unexpected Resend error:", err);
+        emailError = "Load created, but failed to send email.";
       }
+    } else {
+      console.warn("RESEND_API_KEY not configured; skipping email send.");
+      emailError = "Load created, but email service is not configured.";
     }
 
-    return NextResponse.json({
-      ok: true,
-      loadId: load.id,
-      token,
-      uploadUrl,
-    });
-  } catch (error) {
-    console.error("[loads/create] unexpected error:", error);
     return NextResponse.json(
-      { ok: false, error: "Unexpected server error." },
+      {
+        ok: true,
+        load,
+        uploadLink,
+        emailError,
+      },
+      { status: 200 },
+    );
+  } catch (err: any) {
+    console.error("Unexpected error in /api/admin/loads/create:", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Unexpected server error while creating load.",
+      },
       { status: 500 },
     );
   }
