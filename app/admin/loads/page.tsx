@@ -4,7 +4,7 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type LoadRow = {
-  id: string;
+  id: string; // from API (can be numeric in DB, string here is fine)
   token: string;
   reference: string | null;
   status: string | null;
@@ -36,6 +36,7 @@ export default function AdminLoadsPage() {
   const [search, setSearch] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const fetchLoads = async () => {
     setLoading(true);
@@ -45,10 +46,9 @@ export default function AdminLoadsPage() {
       if (statusFilter) params.set("status", statusFilter);
       if (search.trim()) params.set("search", search.trim());
 
-      const res = await fetch(
-        `/api/admin/loads/list?${params.toString()}`,
-        { cache: "no-store" },
-      );
+      const res = await fetch(`/api/admin/loads/list?${params.toString()}`, {
+        cache: "no-store",
+      });
       const json = (await res.json()) as LoadsResponse;
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Failed to load loads");
@@ -92,7 +92,53 @@ export default function AdminLoadsPage() {
     if (v === "in_transit" || v === "dispatched") {
       return "bg-sky-500/10 text-sky-300 border-sky-500/40";
     }
+    if (v === "docs_received") {
+      return "bg-amber-500/10 text-amber-300 border-amber-500/40";
+    }
+    if (v === "ready_to_invoice") {
+      return "bg-purple-500/10 text-purple-300 border-purple-500/40";
+    }
     return "bg-slate-800 text-slate-200 border-slate-600/60";
+  };
+
+  const isReadyToInvoice = (status: string | null) =>
+    (status || "").toLowerCase() === "ready_to_invoice";
+
+  const handleToggleReady = async (e: React.MouseEvent, load: LoadRow) => {
+    e.stopPropagation(); // don't trigger row navigation
+
+    const currentlyReady = isReadyToInvoice(load.status);
+    const targetReady = !currentlyReady;
+
+    try {
+      setTogglingId(load.id);
+      setError(null);
+
+      const res = await fetch(
+        `/api/admin/loads/${load.id}/ready-to-invoice`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ready: targetReady }),
+        },
+      );
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to update status");
+      }
+
+      setLoads((prev) =>
+        prev.map((l) =>
+          l.id === load.id ? { ...l, status: data.status } : l,
+        ),
+      );
+    } catch (err: any) {
+      console.error("handleToggleReady error:", err);
+      setError(err.message || "Failed to update status");
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   return (
@@ -132,6 +178,8 @@ export default function AdminLoadsPage() {
               <option value="created">Created</option>
               <option value="dispatched">Dispatched</option>
               <option value="in_transit">In transit</option>
+              <option value="docs_received">Docs received</option>
+              <option value="ready_to_invoice">Ready to invoice</option>
               <option value="delivered">Delivered</option>
               <option value="completed">Completed</option>
             </select>
@@ -173,13 +221,14 @@ export default function AdminLoadsPage() {
                   <th className="px-3 py-2 text-left">Pickup / Delivery</th>
                   <th className="px-3 py-2 text-left">Rate</th>
                   <th className="px-3 py-2 text-left">Status</th>
+                  <th className="px-3 py-2 text-left">Ready to invoice</th>
                 </tr>
               </thead>
               <tbody>
                 {loads.length === 0 && !loading && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-3 py-4 text-center text-slate-500"
                     >
                       No loads found with the current filters.
@@ -222,12 +271,32 @@ export default function AdminLoadsPage() {
                         {load.status || "created"}
                       </span>
                     </td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        onClick={(e) => handleToggleReady(e, load)}
+                        disabled={togglingId === load.id}
+                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
+                          isReadyToInvoice(load.status)
+                            ? "bg-sky-500"
+                            : "bg-slate-700"
+                        }`}
+                      >
+                        <span
+                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
+                            isReadyToInvoice(load.status)
+                              ? "translate-x-4"
+                              : "translate-x-0"
+                          }`}
+                        />
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {loading && (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={8}
                       className="px-3 py-3 text-center text-slate-400"
                     >
                       Loading…
