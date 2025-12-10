@@ -82,6 +82,7 @@ export async function POST(
           doc_type: docType,
           storage_bucket: bucket,
           storage_path: storagePath,
+          file_path: storagePath, // ✅ satisfy NOT NULL "file_path" column
           original_filename: file.name,
           status: "pending",
         })
