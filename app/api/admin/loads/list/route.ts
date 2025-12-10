@@ -1,16 +1,27 @@
 // app/api/admin/loads/list/route.ts
 
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 
-export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-export async function GET(req: Request) {
+const ALLOWED_STATUSES = [
+  "created",
+  "dispatched",
+  "in_transit",
+  "docs_received",
+  "ready_to_invoice",
+  "delivered",
+  "completed",
+  "archived",
+];
+
+export async function GET(req: NextRequest) {
   try {
-    const url = new URL(req.url);
-    const search = url.searchParams.get("search")?.trim() || "";
-    const status = url.searchParams.get("status") || "all";
+    const { searchParams } = new URL(req.url);
+
+    const rawStatus = searchParams.get("status") || "all";
+    const search = searchParams.get("search") || "";
 
     let query = supabaseAdmin
       .from("loads")
@@ -21,6 +32,7 @@ export async function GET(req: Request) {
         reference,
         status,
         shipper_name,
+        shipper_email,
         receiver_name,
         origin_city,
         origin_state,
@@ -31,26 +43,30 @@ export async function GET(req: Request) {
         carrier_name,
         carrier_email,
         rate,
-        created_at
+        created_at,
+        shipper_billed_amount,
+        carrier_pay_amount,
+        paid_status,
+        paid_at,
+        margin_cached
       `,
       )
       .order("created_at", { ascending: false });
 
-    if (status && status !== "all") {
-      query = query.eq("status", status);
+    if (rawStatus !== "all" && ALLOWED_STATUSES.includes(rawStatus)) {
+      query = query.eq("status", rawStatus);
     }
 
-    if (search) {
-      // basic multi-field search
-      const pattern = `%${search}%`;
+    if (search.trim().length > 0) {
+      const term = `%${search.trim()}%`;
       query = query.or(
         [
-          `reference.ilike.${pattern}`,
-          `shipper_name.ilike.${pattern}`,
-          `receiver_name.ilike.${pattern}`,
-          `carrier_name.ilike.${pattern}`,
-          `origin_city.ilike.${pattern}`,
-          `dest_city.ilike.${pattern}`,
+          `reference.ilike.${term}`,
+          `shipper_name.ilike.${term}`,
+          `receiver_name.ilike.${term}`,
+          `carrier_name.ilike.${term}`,
+          `origin_city.ilike.${term}`,
+          `dest_city.ilike.${term}`,
         ].join(","),
       );
     }
@@ -60,25 +76,22 @@ export async function GET(req: Request) {
     if (error) {
       console.error("Error fetching loads:", error);
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Failed to fetch loads: " +
-            (error.message || error.details || "Unknown error"),
-        },
+        { ok: false, error: "Failed to fetch loads" },
         { status: 500 },
       );
     }
 
-    return NextResponse.json({ ok: true, loads: data ?? [] }, { status: 200 });
-  } catch (err: any) {
-    console.error("Fatal error in /api/admin/loads/list:", err);
     return NextResponse.json(
       {
-        ok: false,
-        error:
-          "Unexpected error listing loads: " + (err?.message || String(err)),
+        ok: true,
+        loads: data ?? [],
       },
+      { status: 200 },
+    );
+  } catch (err) {
+    console.error("Unexpected error in loads list:", err);
+    return NextResponse.json(
+      { ok: false, error: "Unexpected error" },
       { status: 500 },
     );
   }
