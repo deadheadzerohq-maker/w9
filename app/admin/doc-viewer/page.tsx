@@ -1,19 +1,36 @@
 "use client";
 
-import { useSearchParams, useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+
+export const dynamic = "force-dynamic";
 
 export default function AdminDocViewerPage() {
-  const searchParams = useSearchParams();
-  const router = useRouter();
+  const [url, setUrl] = useState<string | null>(null);
+  const [name, setName] = useState<string>("Document");
 
-  const url = searchParams.get("url");
-  const name = searchParams.get("name") || "Document";
+  // Read query params on the client only
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const u = params.get("url");
+    const n = params.get("name");
+    if (u) setUrl(u);
+    if (n) setName(n);
+  }, []);
 
+  const goBack = () => {
+    if (typeof window !== "undefined") {
+      window.history.back();
+    }
+  };
+
+  // While we don't have a URL yet (SSR / initial render), show a simple message
   if (!url) {
     return (
       <main className="min-h-screen bg-slate-950 text-slate-50 flex items-center justify-center">
         <div className="text-xs text-slate-400">
-          Missing document URL. Close this tab and try again.
+          Loading document viewer… If this message stays, close this tab and try
+          again.
         </div>
       </main>
     );
@@ -24,7 +41,7 @@ export default function AdminDocViewerPage() {
       <header className="flex items-center justify-between px-4 py-2 border-b border-slate-800 text-xs">
         <button
           type="button"
-          onClick={() => router.back()}
+          onClick={goBack}
           className="text-slate-400 hover:text-emerald-300"
         >
           ← Back
@@ -48,8 +65,7 @@ export default function AdminDocViewerPage() {
           style={{
             maxWidth: "90vw",
             maxHeight: "90vh",
-            // remove this next line if you want it to fit instead of be big:
-            width: "900px",
+            width: "900px", // large by default
             height: "auto",
           }}
         />
