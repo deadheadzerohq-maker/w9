@@ -29,6 +29,11 @@ export default function AdminHomePage() {
                 description="Generate a new load, auto-create a token, and email the carrier a secure upload link for BOL / POD."
               />
               <AdminLink
+                href="/admin/loads"
+                title="All Loads"
+                description="View all loads, filter by status, search by reference or carrier, and drill into docs for any lane."
+              />
+              <AdminLink
                 href="/admin/docs"
                 title="Document Review Queue"
                 description="Review all uploaded documents from carriers, see Grok fraud scores, approve/reject, and promote into load_documents."
@@ -82,7 +87,7 @@ export default function AdminHomePage() {
             </div>
           </section>
 
-          {/* External Tools */}
+          {/* Platform Tools */}
           <section className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
             <h2 className="text-sm font-semibold text-slate-200 mb-3">
               Platform Tools
@@ -114,10 +119,9 @@ export default function AdminHomePage() {
 
         <p className="mt-8 text-[11px] text-slate-500">
           All admin routes under <code className="font-mono">/admin</code> are
-          protected by HTTP Basic Auth using <code className="font-mono">
-            ADMIN_USERNAME
-          </code>{" "}
-          and <code className="font-mono">ADMIN_PASSWORD</code> environment
+          protected by HTTP Basic Auth using{" "}
+          <code className="font-mono">ADMIN_USERNAME</code> and{" "}
+          <code className="font-mono">ADMIN_PASSWORD</code> environment
           variables. Update these in Vercel to rotate your master admin login.
         </p>
       </div>
