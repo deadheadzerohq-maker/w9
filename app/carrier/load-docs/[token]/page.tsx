@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState, useRef } from "react";
 import { useParams } from "next/navigation";
-import supabase from "@/lib/supabaseBrowserClient";
+import { createClient } from "@supabase/supabase-js";
 
 type DocType = "BOL" | "POD" | "Rate Confirmation" | "Other";
 
@@ -16,6 +16,21 @@ type PendingDocument = {
   grok_fraud_score?: number | null;
   grok_fraud_label?: string | null;
 };
+
+// ---------- Supabase browser client (inline) ----------
+const supabaseUrl =
+  (process.env.NEXT_PUBLIC_SUPABASE_URL as string) || "";
+const supabaseAnonKey =
+  (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY as string) || "";
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error(
+    "Supabase env vars missing: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY",
+  );
+}
+
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
+// ------------------------------------------------------
 
 const docTypeOptions: DocType[] = ["BOL", "POD", "Rate Confirmation", "Other"];
 
