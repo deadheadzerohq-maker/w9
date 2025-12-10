@@ -5,6 +5,7 @@ import supabaseAdmin from "@/lib/supabaseAdmin";
 import { runGrokFraudCheck } from "@/lib/grokFraud";
 
 export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function POST(
   req: Request,
@@ -19,14 +20,14 @@ export async function POST(
 
     if (!token || !docType) {
       return NextResponse.json(
-        { error: "Missing token or docType" },
+        { ok: false, error: "Missing token or docType" },
         { status: 400 },
       );
     }
 
     if (!files.length) {
       return NextResponse.json(
-        { error: "No files received" },
+        { ok: false, error: "No files received" },
         { status: 400 },
       );
     }
@@ -34,7 +35,7 @@ export async function POST(
     const bucket = "load-documents";
     const inserted: any[] = [];
 
-    // We’ll look up the load once so we can give Grok some context
+    // Optional: load context for Grok
     const { data: load, error: loadError } = await supabaseAdmin
       .from("loads")
       .select("*")
@@ -61,7 +62,14 @@ export async function POST(
       if (uploadError) {
         console.error("Storage upload error:", uploadError);
         return NextResponse.json(
-          { error: "Failed to upload to storage" },
+          {
+            ok: false,
+            error:
+              "Storage upload error: " +
+              (uploadError.message ||
+                (uploadError as any).error ||
+                JSON.stringify(uploadError)),
+          },
           { status: 500 },
         );
       }
@@ -83,15 +91,20 @@ export async function POST(
       if (insertError || !pendingRow) {
         console.error("Failed to insert pending_documents:", insertError);
         return NextResponse.json(
-          { error: "Failed to record document in database" },
+          {
+            ok: false,
+            error:
+              "Database insert error (pending_documents): " +
+              (insertError?.message ||
+                (insertError as any).details ||
+                JSON.stringify(insertError)),
+          },
           { status: 500 },
         );
       }
 
       // --- Grok fraud check (best-effort, non-blocking) ---
       try {
-        // Create a short-lived signed URL for Grok to inspect if your Grok
-        // helper ever looks at document URLs. If it doesn’t, this is harmless.
         const { data: signed, error: signError } =
           await supabaseAdmin.storage
             .from(bucket)
@@ -101,10 +114,7 @@ export async function POST(
           console.error("Error creating signed URL for Grok:", signError);
         }
 
-        // Build a payload that roughly matches your existing Grok carrier shape.
-        // We cast to any so TypeScript doesn’t complain about extra/missing keys.
         const grokInput: any = {
-          // Carrier identity context (fallbacks are empty strings)
           legalName: load?.carrier_name ?? "",
           dbaName: "",
           mcNumber: "",
@@ -117,8 +127,6 @@ export async function POST(
           state: load?.origin_state ?? "",
           postalCode: "",
           country: "US",
-
-          // Basic load context
           lane: `${load?.origin_city ?? ""}, ${load?.origin_state ?? ""} -> ${
             load?.dest_city ?? ""
           }, ${load?.dest_state ?? ""}`,
@@ -126,8 +134,6 @@ export async function POST(
           deliveryDate: load?.delivery_date ?? null,
           reference: load?.reference ?? null,
           rateToCarrier: load?.rate ?? null,
-
-          // Single document for this call
           documents: [
             {
               type: docType,
@@ -137,8 +143,6 @@ export async function POST(
               storagePath,
             },
           ],
-
-          // Extra context for your own future use
           meta: {
             source: "load_document_upload",
             pending_document_id: pendingRow.id,
@@ -172,17 +176,22 @@ export async function POST(
         }
       } catch (err) {
         console.error("Grok fraud check error (non-fatal):", err);
-        // We do NOT fail the upload if Grok has issues
+        // Do NOT block upload on Grok failure
       }
 
       inserted.push(pendingRow);
     }
 
-    return NextResponse.json({ ok: true, inserted });
-  } catch (err) {
+    return NextResponse.json({ ok: true, inserted }, { status: 200 });
+  } catch (err: any) {
     console.error("upload-docs route fatal error:", err);
     return NextResponse.json(
-      { error: "Unexpected error while uploading documents" },
+      {
+        ok: false,
+        error:
+          "Unexpected error while uploading documents: " +
+          (err?.message || String(err)),
+      },
       { status: 500 },
     );
   }
