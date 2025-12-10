@@ -3,76 +3,142 @@
 import { NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 
-export async function GET(
-  request: Request,
-  context: { params: { token: string } },
-) {
-  try {
-    const token = decodeURIComponent(context.params.token);
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
-    // 1) Load metadata (if loads table has token column)
+export async function GET(
+  _req: Request,
+  { params }: { params: { token: string } },
+) {
+  const token = params.token;
+
+  if (!token) {
+    return NextResponse.json(
+      { ok: false, error: "Missing token" },
+      { status: 400 },
+    );
+  }
+
+  try {
+    // --- Load metadata (optional, so errors are non-fatal) ---
     const { data: load, error: loadError } = await supabaseAdmin
       .from("loads")
-      .select(
-        `
-        id,
-        token,
-        reference,
-        status,
-        shipper_name,
-        receiver_name,
-        origin_city,
-        origin_state,
-        dest_city,
-        dest_state,
-        pickup_date,
-        delivery_date
-      `,
-      )
+      .select("*")
       .eq("token", token)
       .maybeSingle();
 
     if (loadError) {
-      console.error("admin/load-docs load error:", loadError);
+      console.error("Error fetching load for token", token, loadError);
     }
 
-    // 2) Pending docs for this token
+    // --- Pending / rejected docs: pending_documents EXCLUDING approved ---
     const { data: pending, error: pendingError } = await supabaseAdmin
       .from("pending_documents")
       .select(
-        "id, doc_type, original_filename, file_path, status, created_at, grok_fraud_score, grok_fraud_label",
+        `
+          id,
+          token,
+          doc_type,
+          original_filename,
+          file_path,
+          storage_path,
+          storage_bucket,
+          status,
+          created_at,
+          grok_fraud_score,
+          grok_fraud_label
+        `,
       )
       .eq("token", token)
-      .order("created_at", { ascending: true });
+      .neq("status", "approved")
+      .order("created_at", { ascending: false });
 
     if (pendingError) {
-      console.error("admin/load-docs pending error:", pendingError);
+      console.error(
+        "Error fetching pending_documents for token",
+        token,
+        pendingError,
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Failed to fetch pending documents: " +
+            (pendingError.message || pendingError.details || ""),
+        },
+        { status: 500 },
+      );
     }
 
-    // 3) Approved docs promoted into load_documents for this token
-    const { data: approved, error: approvedError } = await supabaseAdmin
+    // --- Approved docs: load_documents ---
+    const { data: approvedRaw, error: approvedError } = await supabaseAdmin
       .from("load_documents")
       .select(
-        "id, pending_document_id, token, doc_type, original_filename, file_path, created_at",
+        `
+          id,
+          pending_document_id,
+          load_id,
+          token,
+          doc_type,
+          original_filename,
+          file_path,
+          storage_bucket,
+          storage_path,
+          created_at
+        `,
       )
       .eq("token", token)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: false });
 
     if (approvedError) {
-      console.error("admin/load-docs approved error:", approvedError);
+      console.error(
+        "Error fetching load_documents for token",
+        token,
+        approvedError,
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Failed to fetch approved documents: " +
+            (approvedError.message || approvedError.details || ""),
+        },
+        { status: 500 },
+      );
     }
 
-    return NextResponse.json({
-      ok: true,
-      token,
-      load: load || null,
-      pending: pending || [],
-      approved: approved || [],
-    });
-  } catch (error) {
-    console.error("admin/load-docs unexpected error:", error);
+    // Map approved docs so file_path is ALWAYS usable by the UI
+    const approved =
+      approvedRaw?.map((doc) => ({
+        id: doc.id,
+        pending_document_id: doc.pending_document_id,
+        token: doc.token,
+        doc_type: doc.doc_type,
+        original_filename: doc.original_filename,
+        // 👇 critical: ensure file_path is filled from storage_path if null
+        file_path: doc.file_path ?? doc.storage_path,
+        created_at: doc.created_at,
+      })) ?? [];
+
     return NextResponse.json(
-      { ok: false, error: "Unexpected error" },
+      {
+        ok: true,
+        token,
+        load: load ?? null,
+        pending: pending ?? [],
+        approved,
+      },
+      { status: 200 },
+    );
+  } catch (err: any) {
+    console.error("Fatal error in /api/admin/load-docs/[token]:", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error:
+          "Unexpected error fetching load documents: " +
+          (err?.message || String(err)),
+      },
       { status: 500 },
     );
   }
