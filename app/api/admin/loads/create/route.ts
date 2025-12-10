@@ -5,18 +5,30 @@ import { randomUUID } from "crypto";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
 
-// Make sure we know at startup whether the key is present
+// ---- Initialize Resend ----
 const resendApiKey = process.env.RESEND_API_KEY;
 if (!resendApiKey) {
-  console.error(
-    "[loads/create] RESEND_API_KEY is not set. Emails will be skipped.",
-  );
+  console.error("[loads/create] RESEND_API_KEY is not set. Emails will be skipped.");
 }
-
 const resend = resendApiKey ? new Resend(resendApiKey) : null;
 
-// Force Node runtime so crypto + Resend work as expected
+// ---- Force Node runtime (crypto + Resend work best here) ----
 export const runtime = "nodejs";
+
+// ---- Helper: Pretty date formatting ----
+function formatDateTime(value?: string | null): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return value;
+
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 export async function POST(request: Request) {
   console.log("[loads/create] POST hit");
@@ -39,35 +51,30 @@ export async function POST(request: Request) {
       rate,
     } = body || {};
 
+    // ---- Required field validation ----
     if (!carrierEmail || !originCity || !destCity || !pickupDate) {
-      console.warn(
-        "[loads/create] Missing required fields:",
-        JSON.stringify({
-          carrierEmail,
-          originCity,
-          destCity,
-          pickupDate,
-        }),
-      );
+      console.warn("[loads/create] Missing required fields:", {
+        carrierEmail,
+        originCity,
+        destCity,
+        pickupDate,
+      });
 
       return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "Missing required fields (carrierEmail, origin/dest, pickupDate).",
-        },
-        { status: 400 },
+        { ok: false, error: "Missing required fields." },
+        { status: 400 }
       );
     }
 
     const token = randomUUID();
 
+    // ---- Build upload link ----
     const baseUrl =
       process.env.NEXT_PUBLIC_BASE_URL || "https://deadheadzero.com";
     const normalizedBase = baseUrl.replace(/\/$/, "");
     const uploadUrl = `${normalizedBase}/carrier/load-docs/${token}`;
 
-    // Insert load into Supabase
+    // ---- Insert load into Supabase ----
     const { data: load, error: insertError } = await supabaseAdmin
       .from("loads")
       .insert({
@@ -93,30 +100,25 @@ export async function POST(request: Request) {
     if (insertError || !load) {
       console.error("[loads/create] Supabase insert error:", insertError);
       return NextResponse.json(
-        { ok: false, error: "Failed to create load" },
-        { status: 500 },
+        { ok: false, error: "Failed to create load." },
+        { status: 500 }
       );
     }
 
-    console.log(
-      "[loads/create] Load created with id, token:",
-      load.id,
-      load.token,
-    );
+    console.log("[loads/create] Load created:", {
+      loadId: load.id,
+      token: load.token,
+    });
 
-    // === Email sending via Resend ===
+    // ---- Email via Resend ----
     if (!resend) {
-      console.error(
-        "[loads/create] Resend client not initialized – skipping email.",
-      );
+      console.error("[loads/create] Resend not initialized – skipping email.");
     } else {
       const laneDesc = `${originCity || "Origin"}${
         originState ? ", " + originState : ""
       } → ${destCity || "Destination"}${destState ? ", " + destState : ""}`;
 
-      const subject = `Upload BOL/POD for load ${
-        reference || load.id
-      } – Deadhead Zero`;
+      const subject = `Upload BOL/POD for load ${reference || load.id} – Deadhead Zero`;
 
       const textLines = [
         carrierName ? `Hi ${carrierName},` : "Hi,",
@@ -125,8 +127,8 @@ export async function POST(request: Request) {
         uploadUrl,
         "",
         `Lane: ${laneDesc}`,
-        pickupDate ? `Pickup: ${pickupDate}` : "",
-        deliveryDate ? `Delivery: ${deliveryDate}` : "",
+        pickupDate ? `Pickup: ${formatDateTime(pickupDate)}` : "",
+        deliveryDate ? `Delivery: ${formatDateTime(deliveryDate)}` : "",
         "",
         `Supported file types: PDF, JPG, PNG.`,
         `No login required.`,
@@ -143,10 +145,7 @@ export async function POST(request: Request) {
           text: textLines.join("\n"),
         });
 
-        console.log(
-          "[loads/create] Resend email result:",
-          JSON.stringify(result),
-        );
+        console.log("[loads/create] Resend email result:", result);
       } catch (err) {
         console.error("[loads/create] Resend email error:", err);
       }
@@ -161,8 +160,8 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[loads/create] unexpected error:", error);
     return NextResponse.json(
-      { ok: false, error: "Unexpected error" },
-      { status: 500 },
+      { ok: false, error: "Unexpected server error." },
+      { status: 500 }
     );
   }
 }
