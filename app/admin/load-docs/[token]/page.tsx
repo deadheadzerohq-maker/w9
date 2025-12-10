@@ -24,9 +24,25 @@ type ApprovedDoc = {
   created_at: string;
 };
 
+type LoadMeta = {
+  id: string;
+  token: string | null;
+  reference: string | null;
+  status: string | null;
+  shipper_name: string | null;
+  receiver_name: string | null;
+  origin_city: string | null;
+  origin_state: string | null;
+  dest_city: string | null;
+  dest_state: string | null;
+  pickup_date: string | null;
+  delivery_date: string | null;
+};
+
 type LoadDocsResponse = {
   ok: boolean;
   token: string;
+  load: LoadMeta | null;
   pending: PendingDoc[];
   approved: ApprovedDoc[];
 };
@@ -39,6 +55,7 @@ export default function AdminLoadDocsPage() {
   const [data, setData] = useState<LoadDocsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openingPath, setOpeningPath] = useState<string | null>(null);
 
   const load = async () => {
     if (!token) return;
@@ -66,11 +83,52 @@ export default function AdminLoadDocsPage() {
     void load();
   }, [token]);
 
-  const openStorageFile = (filePath: string) => {
-    // For now, just display the path; later you can add an API to generate a signed URL
-    alert(
-      `To view this file, either use Supabase Storage explorer or add an API to generate a signed URL.\n\nStorage path:\n${filePath}`,
-    );
+  const openStorageFile = async (filePath: string) => {
+    try {
+      setOpeningPath(filePath);
+      const res = await fetch("/api/admin/doc-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json.ok || !json.url) {
+        throw new Error(json.error || "Failed to generate signed URL");
+      }
+      if (typeof window !== "undefined") {
+        window.open(json.url, "_blank", "noopener,noreferrer");
+      }
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Failed to open document");
+    } finally {
+      setOpeningPath(null);
+    }
+  };
+
+  const formatDate = (value: string | null) => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleString();
+  };
+
+  const formatShortDate = (value: string | null) => {
+    if (!value) return null;
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return value;
+    return d.toLocaleDateString();
+  };
+
+  const loadLane = (load: LoadMeta | null) => {
+    if (!load) return null;
+    const oCity = load.origin_city || "Origin";
+    const oState = load.origin_state || "";
+    const dCity = load.dest_city || "Destination";
+    const dState = load.dest_state || "";
+    return `${oCity}${oState ? ", " + oState : ""} \u2192 ${dCity}${
+      dState ? ", " + dState : ""
+    }`;
   };
 
   return (
@@ -84,6 +142,7 @@ export default function AdminLoadDocsPage() {
           ← Back to Document Review
         </button>
 
+        {/* Load summary */}
         <header className="mb-4 flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
@@ -91,8 +150,58 @@ export default function AdminLoadDocsPage() {
             </h1>
             <p className="text-sm text-slate-400">
               Token:{" "}
-              <span className="font-mono text-slate-200">{token}</span>
+              <span className="font-mono text-slate-200 break-all">
+                {token}
+              </span>
             </p>
+            {data?.load ? (
+              <div className="mt-2 text-xs text-slate-300 space-y-1">
+                <div className="font-medium">
+                  {loadLane(data.load)}
+                  {data.load.reference && (
+                    <>
+                      {" "}
+                      • Ref:{" "}
+                      <span className="font-mono">
+                        {data.load.reference}
+                      </span>
+                    </>
+                  )}
+                </div>
+                <div className="text-slate-400">
+                  Shipper:{" "}
+                  {data.load.shipper_name || (
+                    <span className="text-slate-500 italic">N/A</span>
+                  )}
+                  {" • "}
+                  Receiver:{" "}
+                  {data.load.receiver_name || (
+                    <span className="text-slate-500 italic">N/A</span>
+                  )}
+                </div>
+                <div className="text-slate-400">
+                  Pickup:{" "}
+                  {formatShortDate(data.load.pickup_date) || (
+                    <span className="text-slate-500 italic">N/A</span>
+                  )}
+                  {" • "}
+                  Delivery:{" "}
+                  {formatShortDate(data.load.delivery_date) || (
+                    <span className="text-slate-500 italic">N/A</span>
+                  )}
+                  {" • "}
+                  Status:{" "}
+                  <span className="font-mono">
+                    {data.load.status || "N/A"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="mt-2 text-xs text-slate-500">
+                No load metadata found for this token. We can later wire tokens
+                directly at load creation so this view always has full context.
+              </p>
+            )}
           </div>
           <button
             type="button"
@@ -131,15 +240,16 @@ export default function AdminLoadDocsPage() {
                     </div>
                     <div className="text-[11px] text-slate-500 truncate">
                       {doc.doc_type} •{" "}
-                      {new Date(doc.created_at).toLocaleString()}
+                      {formatDate(doc.created_at) || "Unknown time"}
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => openStorageFile(doc.file_path)}
-                    className="px-3 py-1 text-[11px] rounded-full border border-slate-700 bg-slate-900 hover:border-emerald-400/60 hover:text-emerald-200"
+                    onClick={() => void openStorageFile(doc.file_path)}
+                    disabled={openingPath === doc.file_path}
+                    className="px-3 py-1 text-[11px] rounded-full border border-slate-700 bg-slate-900 hover:border-emerald-400/60 hover:text-emerald-200 disabled:opacity-60"
                   >
-                    View
+                    {openingPath === doc.file_path ? "Opening…" : "View"}
                   </button>
                 </div>
               ))}
@@ -172,7 +282,8 @@ export default function AdminLoadDocsPage() {
                       <span className="font-mono">
                         {doc.status || "pending"}
                       </span>{" "}
-                      • {new Date(doc.created_at).toLocaleString()}
+                      •{" "}
+                      {formatDate(doc.created_at) || "Unknown time"}
                     </div>
                     {typeof doc.grok_fraud_score === "number" &&
                       doc.grok_fraud_label && (
@@ -184,10 +295,11 @@ export default function AdminLoadDocsPage() {
                   </div>
                   <button
                     type="button"
-                    onClick={() => openStorageFile(doc.file_path)}
-                    className="px-3 py-1 text-[11px] rounded-full border border-slate-700 bg-slate-900 hover:border-emerald-400/60 hover:text-emerald-200"
+                    onClick={() => void openStorageFile(doc.file_path)}
+                    disabled={openingPath === doc.file_path}
+                    className="px-3 py-1 text-[11px] rounded-full border border-slate-700 bg-slate-900 hover:border-emerald-400/60 hover:text-emerald-200 disabled:opacity-60"
                   >
-                    View
+                    {openingPath === doc.file_path ? "Opening…" : "View"}
                   </button>
                 </div>
               ))}
@@ -200,8 +312,9 @@ export default function AdminLoadDocsPage() {
         </section>
 
         <p className="text-[11px] text-slate-500">
-          This view is keyed by token. Later we can wire tokens directly to
-          load IDs and show full load metadata here.
+          This view is keyed by the upload token. As we tighten the brokerage
+          flow, each token can be generated at load creation and tied directly
+          to that load&apos;s lifecycle.
         </p>
       </div>
     </div>
