@@ -10,7 +10,33 @@ export async function GET(
   try {
     const token = decodeURIComponent(context.params.token);
 
-    // Pending docs for this token
+    // 1) Load metadata (if loads table has token column)
+    const { data: load, error: loadError } = await supabaseAdmin
+      .from("loads")
+      .select(
+        `
+        id,
+        token,
+        reference,
+        status,
+        shipper_name,
+        receiver_name,
+        origin_city,
+        origin_state,
+        dest_city,
+        dest_state,
+        pickup_date,
+        delivery_date
+      `,
+      )
+      .eq("token", token)
+      .maybeSingle();
+
+    if (loadError) {
+      console.error("admin/load-docs load error:", loadError);
+    }
+
+    // 2) Pending docs for this token
     const { data: pending, error: pendingError } = await supabaseAdmin
       .from("pending_documents")
       .select(
@@ -23,7 +49,7 @@ export async function GET(
       console.error("admin/load-docs pending error:", pendingError);
     }
 
-    // Approved docs promoted into load_documents for this token
+    // 3) Approved docs promoted into load_documents for this token
     const { data: approved, error: approvedError } = await supabaseAdmin
       .from("load_documents")
       .select(
@@ -39,6 +65,7 @@ export async function GET(
     return NextResponse.json({
       ok: true,
       token,
+      load: load || null,
       pending: pending || [],
       approved: approved || [],
     });
