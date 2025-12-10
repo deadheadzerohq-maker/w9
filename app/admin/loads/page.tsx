@@ -1,14 +1,25 @@
+// app/admin/loads/page.tsx
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 
-type LoadRow = {
-  id: number; // ✅ numeric id
+type LoadStatus =
+  | "created"
+  | "dispatched"
+  | "in_transit"
+  | "docs_received"
+  | "ready_to_invoice"
+  | "delivered"
+  | "completed"
+  | "archived";
+
+type Load = {
+  id: number;
   token: string;
   reference: string | null;
-  status: string | null;
+  status: LoadStatus;
   shipper_name: string | null;
+  shipper_email: string | null;
   receiver_name: string | null;
   origin_city: string | null;
   origin_state: string | null;
@@ -18,294 +29,482 @@ type LoadRow = {
   delivery_date: string | null;
   carrier_name: string | null;
   carrier_email: string | null;
-  rate: string | null;
+  rate: number | null;
   created_at: string;
+  shipper_billed_amount: number | null;
+  carrier_pay_amount: number | null;
+  paid_status: string | null;
+  paid_at: string | null;
+  margin_cached: number | null;
 };
 
-type LoadsResponse = {
-  ok: boolean;
-  loads: LoadRow[];
-  error?: string;
-};
+const STATUS_OPTIONS: { value: "all" | LoadStatus; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "created", label: "Created" },
+  { value: "dispatched", label: "Dispatched" },
+  { value: "in_transit", label: "In transit" },
+  { value: "docs_received", label: "Docs received" },
+  { value: "ready_to_invoice", label: "Ready to invoice" },
+  { value: "delivered", label: "Delivered" },
+  { value: "completed", label: "Completed" },
+  { value: "archived", label: "Archived" },
+];
+
+function formatDateTime(dt: string | null) {
+  if (!dt) return "-";
+  const d = new Date(dt);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleString(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatDate(dt: string | null) {
+  if (!dt) return "-";
+  const d = new Date(dt);
+  if (Number.isNaN(d.getTime())) return "-";
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "2-digit",
+    year: "numeric",
+  });
+}
+
+function formatCurrency(value: number | null) {
+  if (value === null || value === undefined) return "-";
+  return `$${value.toFixed(2)}`;
+}
+
+function formatStatusBadge(status: LoadStatus) {
+  const label = status.replace(/_/g, " ");
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
+function PaidBadge({ paidStatus }: { paidStatus: string | null }) {
+  const status = paidStatus || "unpaid";
+  let colorClasses = "bg-gray-800 text-gray-100 border border-gray-600";
+
+  if (status === "paid") {
+    colorClasses = "bg-emerald-900/60 text-emerald-200 border border-emerald-500/60";
+  } else if (status === "partially_paid") {
+    colorClasses = "bg-amber-900/60 text-amber-200 border border-amber-500/60";
+  }
+
+  return (
+    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${colorClasses}`}>
+      {status.replace(/_/g, " ")}
+    </span>
+  );
+}
 
 export default function AdminLoadsPage() {
-  const router = useRouter();
-
-  const [loads, setLoads] = useState<LoadRow[]>([]);
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [search, setSearch] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loads, setLoads] = useState<Load[]>([]);
+  const [statusFilter, setStatusFilter] = useState<"all" | LoadStatus>("all");
+  const [search, setSearch] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [readyToggleLoadingId, setReadyToggleLoadingId] = useState<number | null>(null);
+  const [markPaidLoadingId, setMarkPaidLoadingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [togglingId, setTogglingId] = useState<number | null>(null); // ✅ number | null
 
-  const fetchLoads = async () => {
-    setLoading(true);
-    setError(null);
+  async function fetchLoads() {
     try {
+      setLoading(true);
+      setError(null);
+
       const params = new URLSearchParams();
-      if (statusFilter) params.set("status", statusFilter);
-      if (search.trim()) params.set("search", search.trim());
+      params.set("status", statusFilter);
+      if (search.trim().length > 0) {
+        params.set("search", search.trim());
+      }
 
       const res = await fetch(`/api/admin/loads/list?${params.toString()}`, {
-        cache: "no-store",
+        method: "GET",
       });
-      const json = (await res.json()) as LoadsResponse;
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to load loads");
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to fetch loads");
       }
-      setLoads(json.loads || []);
+
+      const data = await res.json();
+      setLoads(data.loads || []);
     } catch (err: any) {
-      console.error(err);
-      setError(err?.message || "Failed to load loads");
+      console.error("Error fetching loads:", err);
+      setError(err.message || "Failed to fetch loads");
     } finally {
       setLoading(false);
     }
-  };
+  }
 
   useEffect(() => {
-    void fetchLoads();
+    fetchLoads();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [statusFilter]);
 
-  const formatShortDate = (value: string | null) => {
-    if (!value) return "";
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return value;
-    return d.toLocaleDateString();
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchLoads();
   };
 
-  const laneText = (load: LoadRow) => {
-    const oCity = load.origin_city || "Origin";
-    const oState = load.origin_state || "";
-    const dCity = load.dest_city || "Destination";
-    const dState = load.dest_state || "";
-    return `${oCity}${oState ? ", " + oState : ""} → ${dCity}${
-      dState ? ", " + dState : ""
-    }`;
+  const handleRowClick = (token: string) => {
+    if (!token) return;
+    window.location.href = `/admin/load-docs/${token}`;
   };
 
-  const statusBadgeClasses = (status: string | null) => {
-    const v = (status || "created").toLowerCase();
-    if (v === "delivered" || v === "completed") {
-      return "bg-emerald-500/10 text-emerald-300 border-emerald-500/40";
-    }
-    if (v === "in_transit" || v === "dispatched") {
-      return "bg-sky-500/10 text-sky-300 border-sky-500/40";
-    }
-    if (v === "docs_received") {
-      return "bg-amber-500/10 text-amber-300 border-amber-500/40";
-    }
-    if (v === "ready_to_invoice") {
-      return "bg-purple-500/10 text-purple-300 border-purple-500/40";
-    }
-    return "bg-slate-800 text-slate-200 border-slate-600/60";
-  };
-
-  const isReadyToInvoice = (status: string | null) =>
-    (status || "").toLowerCase() === "ready_to_invoice";
-
-  const handleToggleReady = async (
-    e: React.MouseEvent,
-    load: LoadRow,
-  ) => {
-    e.stopPropagation(); // don't trigger row navigation
-
-    const currentlyReady = isReadyToInvoice(load.status);
-    const targetReady = !currentlyReady;
-
+  const handleReadyToggle = async (load: Load, ready: boolean) => {
     try {
-      setTogglingId(load.id);
+      setReadyToggleLoadingId(load.id);
       setError(null);
 
-      const res = await fetch(
-        `/api/admin/loads/${load.id}/ready-to-invoice`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ready: targetReady }),
-        },
-      );
+      const res = await fetch(`/api/admin/loads/${load.id}/ready-to-invoice`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ready }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to update ready_to_invoice status");
+      }
 
       const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to update status");
-      }
+      const newStatus = data.status as LoadStatus;
 
       setLoads((prev) =>
         prev.map((l) =>
-          l.id === load.id ? { ...l, status: data.status } : l,
+          l.id === load.id
+            ? {
+                ...l,
+                status: newStatus,
+              }
+            : l,
         ),
       );
     } catch (err: any) {
-      console.error("handleToggleReady error:", err);
+      console.error("Error toggling ready_to_invoice:", err);
       setError(err.message || "Failed to update status");
     } finally {
-      setTogglingId(null);
+      setReadyToggleLoadingId(null);
+    }
+  };
+
+  const handleMarkPaid = async (load: Load) => {
+    try {
+      setMarkPaidLoadingId(load.id);
+      setError(null);
+
+      const shipperDefault =
+        load.shipper_billed_amount !== null && load.shipper_billed_amount !== undefined
+          ? load.shipper_billed_amount.toString()
+          : load.rate !== null && load.rate !== undefined
+          ? load.rate.toString()
+          : "";
+
+      const carrierDefault =
+        load.carrier_pay_amount !== null && load.carrier_pay_amount !== undefined
+          ? load.carrier_pay_amount.toString()
+          : "";
+
+      const shipperInput = window.prompt(
+        `Shipper billed amount for load ${load.reference || load.id}:`,
+        shipperDefault,
+      );
+      if (shipperInput === null) {
+        setMarkPaidLoadingId(null);
+        return;
+      }
+
+      const carrierInput = window.prompt(
+        `Carrier pay amount for load ${load.reference || load.id}:`,
+        carrierDefault,
+      );
+      if (carrierInput === null) {
+        setMarkPaidLoadingId(null);
+        return;
+      }
+
+      const shipperValue = shipperInput.trim();
+      const carrierValue = carrierInput.trim();
+
+      if (!shipperValue || !carrierValue) {
+        alert("Both shipper billed and carrier pay amounts are required.");
+        setMarkPaidLoadingId(null);
+        return;
+      }
+
+      const shipperNumber = Number(shipperValue);
+      const carrierNumber = Number(carrierValue);
+
+      if (!Number.isFinite(shipperNumber) || !Number.isFinite(carrierNumber)) {
+        alert("Amounts must be valid numbers.");
+        setMarkPaidLoadingId(null);
+        return;
+      }
+
+      const res = await fetch(`/api/admin/loads/${load.id}/mark-paid`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shipperBilledAmount: shipperNumber,
+          carrierPayAmount: carrierNumber,
+          paidStatus: "paid",
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to mark load as paid");
+      }
+
+      const data = await res.json();
+      const updated = data.load as Load;
+
+      setLoads((prev) => prev.map((l) => (l.id === load.id ? updated : l)));
+    } catch (err: any) {
+      console.error("Error marking load as paid:", err);
+      setError(err.message || "Failed to mark load as paid");
+    } finally {
+      setMarkPaidLoadingId(null);
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
-      <div className="max-w-6xl mx-auto space-y-4">
-        <header className="flex items-center justify-between gap-4">
+    <div className="min-h-screen bg-black text-gray-100 px-6 py-8">
+      <div className="max-w-6xl mx-auto space-y-6">
+        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              All Loads
+              Loads – Deadhead Zero
             </h1>
-            <p className="text-xs text-slate-400">
-              Internal view of every brokerage load in Deadhead Zero.
+            <p className="text-sm text-gray-400">
+              Track docs, invoice readiness, and paid / margin in one place.
             </p>
           </div>
           <button
             type="button"
-            onClick={() => router.push("/admin/loads/new")}
-            className="px-4 py-2 text-xs rounded-full bg-emerald-500 text-slate-950 font-semibold shadow-lg shadow-emerald-500/30 hover:bg-emerald-400"
+            onClick={() => (window.location.href = "/admin/loads/new")}
+            className="inline-flex items-center justify-center rounded-lg border border-cyan-500/70 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
           >
-            + Create New Load
+            + New load
           </button>
         </header>
 
-        {/* Filters */}
-        <section className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-xs">
-            <label className="text-slate-400" htmlFor="status-filter">
-              Status
-            </label>
-            <select
-              id="status-filter"
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="bg-slate-950 border border-slate-700 rounded-full px-3 py-1 text-xs text-slate-100"
-            >
-              <option value="all">All</option>
-              <option value="created">Created</option>
-              <option value="dispatched">Dispatched</option>
-              <option value="in_transit">In transit</option>
-              <option value="docs_received">Docs received</option>
-              <option value="ready_to_invoice">Ready to invoice</option>
-              <option value="delivered">Delivered</option>
-              <option value="completed">Completed</option>
-            </select>
-          </div>
-          <div className="flex items-center gap-2 text-xs">
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search ref, shipper, carrier, lane…"
-            className="bg-slate-950 border border-slate-700 rounded-full px-3 py-1 text-xs text-slate-100 min-w-[200px]"
-            />
-            <button
-              type="button"
-              onClick={() => void fetchLoads()}
-              className="px-3 py-1 text-xs rounded-full border border-slate-700 bg-slate-900 hover:border-emerald-400/60 hover:text-emerald-200"
-            >
-              Apply
-            </button>
-          </div>
+        <section className="rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-950 to-gray-900/60 p-4 shadow-xl shadow-cyan-500/10">
+          <form
+            onSubmit={handleSearchSubmit}
+            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-xs uppercase tracking-wide text-gray-400">
+                Status
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) =>
+                  setStatusFilter(e.target.value as "all" | LoadStatus)
+                }
+                className="rounded-lg border border-gray-700 bg-black/60 px-3 py-1.5 text-sm focus:border-cyan-500 focus:outline-none"
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex flex-1 items-center gap-2">
+              <input
+                type="text"
+                placeholder="Search ref, shipper, carrier, origin, destination..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="flex-1 rounded-lg border border-gray-700 bg-black/60 px-3 py-1.5 text-sm focus:border-cyan-500 focus:outline-none"
+              />
+              <button
+                type="submit"
+                className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700"
+              >
+                Search
+              </button>
+            </div>
+          </form>
         </section>
 
         {error && (
-          <div className="text-xs rounded-xl border border-rose-500/50 bg-rose-500/10 text-rose-100 px-3 py-2">
+          <div className="rounded-xl border border-rose-700 bg-rose-950/60 px-4 py-3 text-sm text-rose-100">
             {error}
           </div>
         )}
 
-        {/* Loads table */}
-        <section className="bg-slate-900/70 border border-slate-800 rounded-2xl overflow-hidden">
+        <section className="rounded-2xl border border-gray-800 bg-black/60 shadow-xl shadow-cyan-500/5">
           <div className="overflow-x-auto">
-            <table className="min-w-full text-xs">
-              <thead className="bg-slate-900/90 border-b border-slate-800">
-                <tr className="text-slate-400">
-                  <th className="px-3 py-2 text-left">Created</th>
-                  <th className="px-3 py-2 text-left">Ref</th>
-                  <th className="px-3 py-2 text-left">Lane</th>
-                  <th className="px-3 py-2 text-left">Carrier</th>
-                  <th className="px-3 py-2 text-left">Pickup / Delivery</th>
-                  <th className="px-3 py-2 text-left">Rate</th>
-                  <th className="px-3 py-2 text-left">Status</th>
-                  <th className="px-3 py-2 text-left">Ready to invoice</th>
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-950/80 border-b border-gray-800">
+                <tr>
+                  <th className="px-3 py-2 text-left font-medium text-gray-400">
+                    Created
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-400">
+                    Ref
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-400">
+                    Lane
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-400">
+                    Carrier
+                  </th>
+                  <th className="px-3 py-2 text-left font-medium text-gray-400">
+                    PU / Del
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-400">
+                    Rate
+                  </th>
+                  <th className="px-3 py-2 text-right font-medium text-gray-400">
+                    Margin
+                  </th>
+                  <th className="px-3 py-2 text-center font-medium text-gray-400">
+                    Status
+                  </th>
+                  <th className="px-3 py-2 text-center font-medium text-gray-400">
+                    Ready?
+                  </th>
+                  <th className="px-3 py-2 text-center font-medium text-gray-400">
+                    Paid
+                  </th>
+                  <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
-                {loads.length === 0 && !loading && (
+                {loads.length === 0 && (
                   <tr>
                     <td
-                      colSpan={8}
-                      className="px-3 py-4 text-center text-slate-500"
+                      colSpan={11}
+                      className="px-3 py-8 text-center text-gray-500"
                     >
-                      No loads found with the current filters.
+                      {loading ? "Loading loads..." : "No loads found."}
                     </td>
                   </tr>
                 )}
-                {loads.map((load) => (
-                  <tr
-                    key={load.id}
-                    className="border-b border-slate-800/80 hover:bg-slate-900 cursor-pointer"
-                    onClick={() =>
-                      router.push(`/admin/load-docs/${load.token}`)
-                    }
-                  >
-                    <td className="px-3 py-2 text-slate-300">
-                      {formatShortDate(load.created_at)}
-                    </td>
-                    <td className="px-3 py-2 font-mono text-slate-200">
-                      {load.reference || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-200">
-                      {laneText(load)}
-                    </td>
-                    <td className="px-3 py-2 text-slate-300">
-                      {load.carrier_name || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-300">
-                      {formatShortDate(load.pickup_date) || "—"} /{" "}
-                      {formatShortDate(load.delivery_date) || "—"}
-                    </td>
-                    <td className="px-3 py-2 text-slate-200">
-                      {load.rate ? `$${load.rate}` : "—"}
-                    </td>
-                    <td className="px-3 py-2">
-                      <span
-                        className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[10px] ${statusBadgeClasses(
-                          load.status,
-                        )}`}
+
+                {loads.map((load) => {
+                  const lane = `${load.origin_city || ""}${
+                    load.origin_state ? ", " + load.origin_state : ""
+                  } → ${load.dest_city || ""}${
+                    load.dest_state ? ", " + load.dest_state : ""
+                  }`;
+
+                  const margin =
+                    load.margin_cached !== null &&
+                    load.margin_cached !== undefined
+                      ? load.margin_cached
+                      : load.shipper_billed_amount !== null &&
+                        load.shipper_billed_amount !== undefined &&
+                        load.carrier_pay_amount !== null &&
+                        load.carrier_pay_amount !== undefined
+                      ? load.shipper_billed_amount - load.carrier_pay_amount
+                      : null;
+
+                  const isReady =
+                    load.status === "ready_to_invoice" ||
+                    load.status === "delivered" ||
+                    load.status === "completed";
+
+                  return (
+                    <tr
+                      key={load.id}
+                      className="border-b border-gray-800/80 hover:bg-gray-900/60"
+                    >
+                      <td
+                        className="px-3 py-2 align-top cursor-pointer"
+                        onClick={() => handleRowClick(load.token)}
                       >
-                        {load.status || "created"}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2">
-                      <button
-                        type="button"
-                        onClick={(e) => handleToggleReady(e, load)}
-                        disabled={togglingId === load.id}
-                        className={`relative inline-flex h-5 w-9 items-center rounded-full transition ${
-                          isReadyToInvoice(load.status)
-                            ? "bg-sky-500"
-                            : "bg-slate-700"
-                        }`}
+                        {formatDateTime(load.created_at)}
+                      </td>
+                      <td
+                        className="px-3 py-2 align-top cursor-pointer whitespace-nowrap"
+                        onClick={() => handleRowClick(load.token)}
                       >
-                        <span
-                          className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${
-                            isReadyToInvoice(load.status)
-                              ? "translate-x-4"
-                              : "translate-x-0"
+                        {load.reference || `#${load.id}`}
+                      </td>
+                      <td
+                        className="px-3 py-2 align-top cursor-pointer"
+                        onClick={() => handleRowClick(load.token)}
+                      >
+                        <div className="max-w-[220px] truncate">{lane}</div>
+                      </td>
+                      <td
+                        className="px-3 py-2 align-top cursor-pointer"
+                        onClick={() => handleRowClick(load.token)}
+                      >
+                        <div className="max-w-[200px] truncate">
+                          {load.carrier_name || "-"}
+                        </div>
+                      </td>
+                      <td
+                        className="px-3 py-2 align-top cursor-pointer whitespace-nowrap"
+                        onClick={() => handleRowClick(load.token)}
+                      >
+                        <div>{formatDate(load.pickup_date)}</div>
+                        <div className="text-xs text-gray-500">
+                          → {formatDate(load.delivery_date)}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 align-top text-right whitespace-nowrap">
+                        {formatCurrency(load.rate)}
+                      </td>
+                      <td className="px-3 py-2 align-top text-right whitespace-nowrap">
+                        {margin !== null ? formatCurrency(margin) : "-"}
+                      </td>
+                      <td className="px-3 py-2 align-top text-center">
+                        <span className="inline-flex items-center rounded-full bg-gray-900/60 px-2 py-1 text-xs text-gray-200 border border-gray-700">
+                          {formatStatusBadge(load.status)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 align-top text-center">
+                        <button
+                          type="button"
+                          disabled={readyToggleLoadingId === load.id}
+                          onClick={() => handleReadyToggle(load, !isReady)}
+                          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs border ${
+                            isReady
+                              ? "border-emerald-500/70 bg-emerald-900/50 text-emerald-100"
+                              : "border-gray-600 bg-gray-900 text-gray-200"
+                          } ${
+                            readyToggleLoadingId === load.id
+                              ? "opacity-60 cursor-not-allowed"
+                              : "hover:border-cyan-500/80"
                           }`}
-                        />
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-                {loading && (
-                  <tr>
-                    <td
-                      colSpan={8}
-                      className="px-3 py-3 text-center text-slate-400"
-                    >
-                      Loading…
-                    </td>
-                  </tr>
-                )}
+                        >
+                          {readyToggleLoadingId === load.id
+                            ? "Saving..."
+                            : isReady
+                            ? "Ready"
+                            : "Not ready"}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 align-top text-center">
+                        <PaidBadge paidStatus={load.paid_status} />
+                      </td>
+                      <td className="px-3 py-2 align-top text-center">
+                        <button
+                          type="button"
+                          disabled={markPaidLoadingId === load.id}
+                          onClick={() => handleMarkPaid(load)}
+                          className="inline-flex items-center justify-center rounded-full border border-cyan-500/70 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                          {markPaidLoadingId === load.id
+                            ? "Updating..."
+                            : "Mark paid"}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
