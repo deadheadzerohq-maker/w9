@@ -95,8 +95,15 @@ export default function AdminLoadDocsPage() {
       if (!res.ok || !json.ok || !json.url) {
         throw new Error(json.error || "Failed to generate signed URL");
       }
+
+      const viewerUrl = `/admin/doc-viewer?url=${encodeURIComponent(
+        json.url,
+      )}&name=${encodeURIComponent(
+        filePath.split("/").pop() || "Document",
+      )}`;
+
       if (typeof window !== "undefined") {
-        window.open(json.url, "_blank", "noopener,noreferrer");
+        window.open(viewerUrl, "_blank", "noopener,noreferrer");
       }
     } catch (err: any) {
       console.error(err);
