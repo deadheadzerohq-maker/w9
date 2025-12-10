@@ -5,8 +5,11 @@ import type { NextRequest } from "next/server";
 export function middleware(req: NextRequest) {
   const url = req.nextUrl;
 
-  // Only protect /admin routes
-  if (!url.pathname.startsWith("/admin")) {
+  // Only protect /admin pages + /api/admin APIs
+  const isAdminPage = url.pathname.startsWith("/admin");
+  const isAdminApi = url.pathname.startsWith("/api/admin");
+
+  if (!isAdminPage && !isAdminApi) {
     return NextResponse.next();
   }
 
@@ -43,12 +46,10 @@ export function middleware(req: NextRequest) {
     });
   }
 
-  // Decode "username:password" from base64
   const decoded = atob(encoded);
   const [user, pass] = decoded.split(":");
 
   if (user === username && pass === password) {
-    // Auth OK – let the request through
     return NextResponse.next();
   }
 
@@ -60,7 +61,6 @@ export function middleware(req: NextRequest) {
   });
 }
 
-// Apply to all /admin routes
 export const config = {
-  matcher: ["/admin/:path*"],
+  matcher: ["/admin/:path*", "/api/admin/:path*"],
 };
