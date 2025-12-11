@@ -119,7 +119,9 @@ export default function AdminLoadsPage() {
       }
 
       const res = await fetch(
-        `/api/admin/loads/list${params.toString() ? `?${params.toString()}` : ""}`,
+        `/api/admin/loads/list${
+          params.toString() ? `?${params.toString()}` : ""
+        }`,
         {
           method: "GET",
         },
@@ -150,7 +152,8 @@ export default function AdminLoadsPage() {
       load.payment_terms_text ||
       "Payment terms: Net 21 days. Late payments may be subject to finance charges as agreed.";
     const defaultDays =
-      typeof load.payment_due_days === "number" && !Number.isNaN(load.payment_due_days)
+      typeof load.payment_due_days === "number" &&
+      !Number.isNaN(load.payment_due_days)
         ? String(load.payment_due_days)
         : "21";
 
@@ -183,7 +186,7 @@ export default function AdminLoadsPage() {
       return;
     }
 
-    try:
+    try {
       setModalSubmitting(true);
       setModalError(null);
 
@@ -251,7 +254,7 @@ export default function AdminLoadsPage() {
     }
   }
 
-  const filteredLoads = loads; // filtering handled by API
+  const filteredLoads = loads; // API-side filtering
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
@@ -349,7 +352,8 @@ export default function AdminLoadsPage() {
           <div className="border-b border-slate-800 px-4 py-2 flex items-center justify-between text-slate-400">
             <span>Loads ({filteredLoads.length})</span>
             <span className="text-[10px]">
-              Click lane to open document ops; use Invoice column to view Stripe.
+              Click lane to open document ops; use Invoice column to view
+              Stripe.
             </span>
           </div>
           <div className="overflow-x-auto">
