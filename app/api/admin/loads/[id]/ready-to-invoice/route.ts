@@ -9,7 +9,6 @@ export const runtime = "nodejs";
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
 
 if (!STRIPE_SECRET_KEY) {
-  // This will show in logs if env var is missing
   console.warn(
     "[ready-to-invoice] STRIPE_SECRET_KEY is not set. Invoice creation will fail.",
   );
@@ -17,7 +16,6 @@ if (!STRIPE_SECRET_KEY) {
 
 const stripe = STRIPE_SECRET_KEY
   ? new Stripe(STRIPE_SECRET_KEY, {
-      // Use a recent API version; adjust if your project pins a different one
       apiVersion: "2024-06-20",
     })
   : null;
@@ -40,7 +38,12 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const ready =
       typeof body.ready === "boolean" ? body.ready : true; // default: true
-    const paymentTerms = (body.paymentTerms as string | undefined) || "";
+
+    const paymentTermsInput = (body.paymentTerms as string | undefined) || "";
+    const paymentDueDaysInput =
+      typeof body.paymentDueDays === "number"
+        ? body.paymentDueDays
+        : undefined;
 
     // Fetch the load
     const { data: load, error: loadError } = await supabaseAdmin
@@ -135,16 +138,28 @@ export async function POST(
       );
     }
 
-    // Payment terms text: custom per invoice, but with a default
+    // Payment terms (text) – CUSTOMIZABLE per invoice
     const termsText =
-      paymentTerms.trim() ||
+      paymentTermsInput.trim() ||
       (load.payment_terms_text as string | null) ||
-      "Payment terms: Net 21 days from invoice date.";
+      "Payment terms as agreed between shipper and broker.";
 
-    // Build a human-friendly description for the Stripe line item
+    // Payment due days for Stripe (numeric) – CUSTOMIZABLE per invoice
+    // If not provided, fall back to what is stored on the load, otherwise 21.
+    const daysUntilDue =
+      paymentDueDaysInput ??
+      (typeof load.payment_due_days === "number"
+        ? load.payment_due_days
+        : 21);
+
+    // Build line description
     const lane =
       load.origin_city && load.dest_city
-        ? `${load.origin_city}${load.origin_state ? `, ${load.origin_state}` : ""} → ${load.dest_city}${load.dest_state ? `, ${load.dest_state}` : ""}`
+        ? `${load.origin_city}${
+            load.origin_state ? `, ${load.origin_state}` : ""
+          } → ${load.dest_city}${
+            load.dest_state ? `, ${load.dest_state}` : ""
+          }`
         : "Freight services";
 
     const pickupDate = load.pickup_date
@@ -164,18 +179,16 @@ export async function POST(
 
     const lineDescription = lineDescriptionParts.join(" – ");
 
-    // Create a Stripe customer for the shipper
+    // Create Stripe customer for this shipper
     const customer = await stripe.customers.create({
       name: load.shipper_name || undefined,
       email: load.shipper_email || undefined,
-      // If you eventually store shipper address, you can add it here
       metadata: {
         load_id: String(load.id),
         created_by: "Deadhead Zero Brokerage",
       },
     });
 
-    // Create an invoice item
     const amountInCents = Math.round(billedAmount * 100);
 
     await stripe.invoiceItems.create({
@@ -189,13 +202,11 @@ export async function POST(
       },
     });
 
-    // Create the invoice (Stripe will send it via email)
-    // We'll default to Net 21 for due date; your custom terms text
-    // is still shown in the invoice description / metadata.
+    // Create invoice with dynamic days_until_due + terms text in description
     const invoice = await stripe.invoices.create({
       customer: customer.id,
       collection_method: "send_invoice",
-      days_until_due: 21,
+      days_until_due: daysUntilDue,
       auto_advance: true,
       metadata: {
         load_id: String(load.id),
@@ -211,7 +222,6 @@ export async function POST(
       ].join("\n"),
     });
 
-    // Finalize and send the invoice
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
     const sent = await stripe.invoices.sendInvoice(finalized.id);
 
@@ -223,7 +233,6 @@ export async function POST(
 
     const nowIso = new Date().toISOString();
 
-    // Update the load with invoicing details
     const { data: updated, error: updateError } = await supabaseAdmin
       .from("loads")
       .update({
@@ -231,6 +240,7 @@ export async function POST(
         ready_to_invoice_at: nowIso,
         shipper_billed_amount: billedAmount,
         payment_terms_text: termsText,
+        payment_due_days: daysUntilDue,
         stripe_invoice_id: sent.id,
         stripe_invoice_url: hostedUrl,
         invoice_sent_at: nowIso,
