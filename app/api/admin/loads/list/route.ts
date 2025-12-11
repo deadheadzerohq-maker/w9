@@ -5,23 +5,12 @@ import supabaseAdmin from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
-const ALLOWED_STATUSES = [
-  "created",
-  "dispatched",
-  "in_transit",
-  "docs_received",
-  "ready_to_invoice",
-  "delivered",
-  "completed",
-  "archived",
-];
-
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
-
-    const rawStatus = searchParams.get("status") || "all";
+    const status = searchParams.get("status") || "all";
     const search = searchParams.get("search") || "";
+    const paidStatus = searchParams.get("paid_status") || ""; // optional filter
 
     let query = supabaseAdmin
       .from("loads")
@@ -44,20 +33,30 @@ export async function GET(req: NextRequest) {
         carrier_email,
         rate,
         created_at,
+        -- invoicing + payments
+        stripe_invoice_id,
+        stripe_invoice_url,
+        payment_terms_text,
+        payment_due_days,
         shipper_billed_amount,
-        carrier_pay_amount,
         paid_status,
         paid_at,
-        margin_cached
+        margin_cached,
+        invoice_sent_at,
+        ready_to_invoice_at
       `,
       )
       .order("created_at", { ascending: false });
 
-    if (rawStatus !== "all" && ALLOWED_STATUSES.includes(rawStatus)) {
-      query = query.eq("status", rawStatus);
+    if (status && status !== "all") {
+      query = query.eq("status", status);
     }
 
-    if (search.trim().length > 0) {
+    if (paidStatus && paidStatus !== "all") {
+      query = query.eq("paid_status", paidStatus);
+    }
+
+    if (search.trim()) {
       const term = `%${search.trim()}%`;
       query = query.or(
         [
@@ -74,7 +73,7 @@ export async function GET(req: NextRequest) {
     const { data, error } = await query;
 
     if (error) {
-      console.error("Error fetching loads:", error);
+      console.error("[loads/list] Error fetching loads:", error);
       return NextResponse.json(
         { ok: false, error: "Failed to fetch loads" },
         { status: 500 },
@@ -84,14 +83,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(
       {
         ok: true,
-        loads: data ?? [],
+        loads: data || [],
       },
       { status: 200 },
     );
-  } catch (err) {
-    console.error("Unexpected error in loads list:", err);
+  } catch (err: any) {
+    console.error("[loads/list] Unexpected error:", err);
     return NextResponse.json(
-      { ok: false, error: "Unexpected error" },
+      { ok: false, error: "Unexpected server error" },
       { status: 500 },
     );
   }
