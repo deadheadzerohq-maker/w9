@@ -1,6 +1,11 @@
 // /lib/emailHelpers.ts
 
-// Build a lane description like "Phoenix, AZ → Chicago, IL"
+//
+// buildLaneDescription()
+// Simple, strict version – ONLY accepts an object.
+// This avoids ALL Vercel TypeScript inference issues.
+//
+
 export function buildLaneDescription(args: {
   origin_city?: string | null;
   origin_state?: string | null;
@@ -19,7 +24,11 @@ export function buildLaneDescription(args: {
   return `${originParts} → ${destParts}`;
 }
 
-// Format a date/time string into a readable form
+//
+// formatDateTime()
+// Formats timestamps for emails
+//
+
 export function formatDateTime(
   value: string | null | undefined,
 ): string | null {
