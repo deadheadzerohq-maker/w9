@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
-import { buildLaneDescription, formatDateTime } from "@/lib/emailHelpers";
+import { formatDateTime } from "@/lib/emailHelpers"; // ⬅️ removed buildLaneDescription import
 
 export const runtime = "nodejs";
 
@@ -114,12 +114,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const lane = buildLaneDescription({
-      origin_city: data.origin_city,
-      origin_state: data.origin_state,
-      dest_city: data.dest_city,
-      dest_state: data.dest_state,
-    });
+    // 🔧 Build lane string inline so we don't depend on buildLaneDescription’s type
+    const originLanePart = [data.origin_city, data.origin_state]
+      .filter(Boolean)
+      .join(", ");
+    const destLanePart = [data.dest_city, data.dest_state]
+      .filter(Boolean)
+      .join(", ");
+    const lane = [originLanePart, destLanePart].filter(Boolean).join(" → ");
 
     const pickupPretty = formatDateTime(data.pickup_date);
     const deliveryPretty = data.delivery_date
@@ -138,7 +140,9 @@ export async function POST(req: NextRequest) {
         if (to.length > 0) {
           const htmlParts: string[] = [];
 
-          htmlParts.push(`<div style="background:#020617;padding:24px;color:#e5e7eb;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">`);
+          htmlParts.push(
+            `<div style="background:#020617;padding:24px;color:#e5e7eb;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">`,
+          );
           htmlParts.push(
             `<h1 style="font-size:20px;font-weight:600;margin:0 0 12px">Documents requested for ${subjectRef}</h1>`,
           );
