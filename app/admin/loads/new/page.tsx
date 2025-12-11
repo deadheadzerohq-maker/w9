@@ -5,12 +5,21 @@
 import React, { useState } from "react";
 import Link from "next/link";
 
+type SupabaseErrorPayload = {
+  message?: string;
+  details?: string;
+  hint?: string;
+  code?: string;
+};
+
 type CreateResponse = {
   ok: boolean;
-  loadId?: string;
-  token?: string;
-  uploadUrl?: string;
+  // from API
+  load?: any;
+  uploadLink?: string;
+  emailError?: string;
   error?: string;
+  supabase?: SupabaseErrorPayload;
 };
 
 export default function NewLoadPage() {
@@ -59,13 +68,34 @@ export default function NewLoadPage() {
         body: JSON.stringify(payload),
       });
 
-      const json: CreateResponse = await res.json();
+      const json: CreateResponse = await res.json().catch(() => ({
+        ok: false,
+        error: "Failed to parse API response",
+      }));
 
       if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Failed to create load");
+        const supa = json.supabase || {};
+        const parts = [
+          json.error,
+          supa.code ? `code: ${supa.code}` : "",
+          supa.message ? `message: ${supa.message}` : "",
+          supa.details ? `details: ${supa.details}` : "",
+          supa.hint ? `hint: ${supa.hint}` : "",
+        ].filter(Boolean);
+
+        const msg =
+          parts.join(" | ") ||
+          "Supabase insert error (no additional details). Check Vercel logs.";
+        setError(msg);
+        return;
       }
 
       setResult(json);
+
+      // optional: log upload link in console for quick copy
+      if (json.uploadLink) {
+        console.log("Carrier upload link:", json.uploadLink);
+      }
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Failed to create load");
@@ -73,6 +103,12 @@ export default function NewLoadPage() {
       setSubmitting(false);
     }
   };
+
+  const uploadUrl =
+    result?.uploadLink ||
+    (result?.load?.upload_link as string | undefined) ||
+    undefined;
+  const token = (result?.load?.token as string | undefined) || undefined;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
@@ -102,31 +138,34 @@ export default function NewLoadPage() {
             </div>
           )}
 
-          {result?.ok && result.uploadUrl && (
+          {result?.ok && uploadUrl && (
             <div className="mb-4 text-xs rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-100 px-3 py-2 space-y-1">
               <div className="font-semibold">Load created successfully.</div>
               <div>
                 Upload link for carrier:{" "}
                 <a
-                  href={result.uploadUrl}
+                  href={uploadUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline"
                 >
-                  {result.uploadUrl}
+                  {uploadUrl}
                 </a>
               </div>
-              {result.token && (
+              {token && (
                 <div>
                   Admin view for this token:{" "}
                   <Link
-                    href={`/admin/load-docs/${encodeURIComponent(
-                      result.token,
-                    )}`}
+                    href={`/admin/load-docs/${encodeURIComponent(token)}`}
                     className="underline"
                   >
                     open in Document Ops
                   </Link>
+                </div>
+              )}
+              {result.emailError && (
+                <div className="text-amber-200">
+                  Email note: {result.emailError}
                 </div>
               )}
             </div>
