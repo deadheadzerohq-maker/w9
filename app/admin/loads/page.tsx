@@ -2,22 +2,13 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-
-type LoadStatus =
-  | "created"
-  | "dispatched"
-  | "in_transit"
-  | "docs_received"
-  | "ready_to_invoice"
-  | "delivered"
-  | "completed"
-  | "archived";
+import Link from "next/link";
 
 type Load = {
   id: number;
-  token: string;
+  token: string | null;
   reference: string | null;
-  status: LoadStatus;
+  status: string | null;
   shipper_name: string | null;
   shipper_email: string | null;
   receiver_name: string | null;
@@ -30,16 +21,37 @@ type Load = {
   carrier_name: string | null;
   carrier_email: string | null;
   rate: number | null;
-  created_at: string;
+  created_at: string | null;
+
+  stripe_invoice_id: string | null;
+  stripe_invoice_url: string | null;
+  payment_terms_text: string | null;
+  payment_due_days: number | null;
   shipper_billed_amount: number | null;
-  carrier_pay_amount: number | null;
   paid_status: string | null;
   paid_at: string | null;
   margin_cached: number | null;
+  invoice_sent_at: string | null;
+  ready_to_invoice_at: string | null;
 };
 
-const STATUS_OPTIONS: { value: "all" | LoadStatus; label: string }[] = [
-  { value: "all", label: "All" },
+type ListResponse = {
+  ok: boolean;
+  loads: Load[];
+  error?: string;
+};
+
+type ReadyToInvoiceResponse = {
+  ok: boolean;
+  status?: string;
+  load?: Load;
+  stripeInvoiceId?: string;
+  stripeInvoiceUrl?: string;
+  error?: string;
+};
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "All statuses" },
   { value: "created", label: "Created" },
   { value: "dispatched", label: "Dispatched" },
   { value: "in_transit", label: "In transit" },
@@ -47,14 +59,20 @@ const STATUS_OPTIONS: { value: "all" | LoadStatus; label: string }[] = [
   { value: "ready_to_invoice", label: "Ready to invoice" },
   { value: "delivered", label: "Delivered" },
   { value: "completed", label: "Completed" },
-  { value: "archived", label: "Archived" },
 ];
 
-function formatDateTime(dt: string | null) {
-  if (!dt) return "-";
-  const d = new Date(dt);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleString(undefined, {
+const PAID_STATUS_OPTIONS = [
+  { value: "all", label: "All payment states" },
+  { value: "unpaid", label: "Unpaid" },
+  { value: "partially_paid", label: "Partially paid" },
+  { value: "paid", label: "Paid" },
+];
+
+function formatDateTime(value: string | null) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("en-US", {
     month: "short",
     day: "2-digit",
     year: "numeric",
@@ -63,52 +81,26 @@ function formatDateTime(dt: string | null) {
   });
 }
 
-function formatDate(dt: string | null) {
-  if (!dt) return "-";
-  const d = new Date(dt);
-  if (Number.isNaN(d.getTime())) return "-";
-  return d.toLocaleDateString(undefined, {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
-}
-
-function formatCurrency(value: number | null) {
-  if (value === null || value === undefined) return "-";
+function formatMoney(value: number | null | undefined) {
+  if (value == null || Number.isNaN(value)) return "—";
   return `$${value.toFixed(2)}`;
-}
-
-function formatStatusBadge(status: LoadStatus) {
-  const label = status.replace(/_/g, " ");
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
-
-function PaidBadge({ paidStatus }: { paidStatus: string | null }) {
-  const status = paidStatus || "unpaid";
-  let colorClasses = "bg-gray-800 text-gray-100 border border-gray-600";
-
-  if (status === "paid") {
-    colorClasses = "bg-emerald-900/60 text-emerald-200 border border-emerald-500/60";
-  } else if (status === "partially_paid") {
-    colorClasses = "bg-amber-900/60 text-amber-200 border border-amber-500/60";
-  }
-
-  return (
-    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${colorClasses}`}>
-      {status.replace(/_/g, " ")}
-    </span>
-  );
 }
 
 export default function AdminLoadsPage() {
   const [loads, setLoads] = useState<Load[]>([]);
-  const [statusFilter, setStatusFilter] = useState<"all" | LoadStatus>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [paidStatusFilter, setPaidStatusFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
-  const [readyToggleLoadingId, setReadyToggleLoadingId] = useState<number | null>(null);
-  const [markPaidLoadingId, setMarkPaidLoadingId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalLoad, setModalLoad] = useState<Load | null>(null);
+  const [modalPaymentTerms, setModalPaymentTerms] = useState("");
+  const [modalDueDays, setModalDueDays] = useState<string>("21");
+  const [modalSubmitting, setModalSubmitting] = useState(false);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   async function fetchLoads() {
     try {
@@ -116,25 +108,33 @@ export default function AdminLoadsPage() {
       setError(null);
 
       const params = new URLSearchParams();
-      params.set("status", statusFilter);
-      if (search.trim().length > 0) {
+      if (statusFilter && statusFilter !== "all") {
+        params.set("status", statusFilter);
+      }
+      if (paidStatusFilter && paidStatusFilter !== "all") {
+        params.set("paid_status", paidStatusFilter);
+      }
+      if (search.trim()) {
         params.set("search", search.trim());
       }
 
-      const res = await fetch(`/api/admin/loads/list?${params.toString()}`, {
-        method: "GET",
-      });
+      const res = await fetch(
+        `/api/admin/loads/list${params.toString() ? `?${params.toString()}` : ""}`,
+        {
+          method: "GET",
+        },
+      );
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to fetch loads");
+      const json = (await res.json().catch(() => ({}))) as ListResponse;
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to load loads");
       }
 
-      const data = await res.json();
-      setLoads(data.loads || []);
+      setLoads(json.loads || []);
     } catch (err: any) {
-      console.error("Error fetching loads:", err);
-      setError(err.message || "Failed to fetch loads");
+      console.error("Error loading loads:", err);
+      setError(err.message || "Failed to load loads");
     } finally {
       setLoading(false);
     }
@@ -143,364 +143,336 @@ export default function AdminLoadsPage() {
   useEffect(() => {
     fetchLoads();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter]);
+  }, []);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    fetchLoads();
-  };
+  function openInvoiceModal(load: Load) {
+    const defaultTerms =
+      load.payment_terms_text ||
+      "Payment terms: Net 21 days. Late payments may be subject to finance charges as agreed.";
+    const defaultDays =
+      typeof load.payment_due_days === "number" && !Number.isNaN(load.payment_due_days)
+        ? String(load.payment_due_days)
+        : "21";
 
-  const handleRowClick = (token: string) => {
-    if (!token) return;
-    window.location.href = `/admin/load-docs/${token}`;
-  };
+    setModalLoad(load);
+    setModalPaymentTerms(defaultTerms);
+    setModalDueDays(defaultDays);
+    setModalError(null);
+    setModalOpen(true);
+  }
 
-  const handleReadyToggle = async (load: Load, ready: boolean) => {
+  function closeInvoiceModal() {
+    setModalOpen(false);
+    setModalLoad(null);
+    setModalPaymentTerms("");
+    setModalDueDays("21");
+    setModalError(null);
+    setModalSubmitting(false);
+  }
+
+  async function handleSendInvoice() {
+    if (!modalLoad) return;
+
+    const dueDaysNumber = Number(modalDueDays);
+    if (!modalPaymentTerms.trim()) {
+      setModalError("Please enter payment terms.");
+      return;
+    }
+    if (!Number.isFinite(dueDaysNumber) || dueDaysNumber <= 0) {
+      setModalError("Please enter a valid positive number of days until due.");
+      return;
+    }
+
+    try:
+      setModalSubmitting(true);
+      setModalError(null);
+
+      const res = await fetch(
+        `/api/admin/loads/${modalLoad.id}/ready-to-invoice`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ready: true,
+            paymentTerms: modalPaymentTerms,
+            paymentDueDays: dueDaysNumber,
+          }),
+        },
+      );
+
+      const json = (await res.json().catch(() => ({}))) as ReadyToInvoiceResponse;
+
+      if (!res.ok || !json.ok || !json.load) {
+        throw new Error(json.error || "Failed to send invoice");
+      }
+
+      const updated = json.load;
+
+      setLoads((prev) =>
+        prev.map((l) => (l.id === updated.id ? (updated as Load) : l)),
+      );
+
+      closeInvoiceModal();
+    } catch (err: any) {
+      console.error("Error sending invoice:", err);
+      setModalError(err.message || "Failed to send invoice");
+      setModalSubmitting(false);
+    }
+  }
+
+  async function handleUnsetReady(load: Load) {
     try {
-      setReadyToggleLoadingId(load.id);
+      setLoading(true);
       setError(null);
 
       const res = await fetch(`/api/admin/loads/${load.id}/ready-to-invoice`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ready }),
-      });
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to update ready_to_invoice status");
-      }
-
-      const data = await res.json();
-      const newStatus = data.status as LoadStatus;
-
-      setLoads((prev) =>
-        prev.map((l) =>
-          l.id === load.id
-            ? {
-                ...l,
-                status: newStatus,
-              }
-            : l,
-        ),
-      );
-    } catch (err: any) {
-      console.error("Error toggling ready_to_invoice:", err);
-      setError(err.message || "Failed to update status");
-    } finally {
-      setReadyToggleLoadingId(null);
-    }
-  };
-
-  const handleMarkPaid = async (load: Load) => {
-    try {
-      setMarkPaidLoadingId(load.id);
-      setError(null);
-
-      const shipperDefault =
-        load.shipper_billed_amount !== null && load.shipper_billed_amount !== undefined
-          ? load.shipper_billed_amount.toString()
-          : load.rate !== null && load.rate !== undefined
-          ? load.rate.toString()
-          : "";
-
-      const carrierDefault =
-        load.carrier_pay_amount !== null && load.carrier_pay_amount !== undefined
-          ? load.carrier_pay_amount.toString()
-          : "";
-
-      const shipperInput = window.prompt(
-        `Shipper billed amount for load ${load.reference || load.id}:`,
-        shipperDefault,
-      );
-      if (shipperInput === null) {
-        setMarkPaidLoadingId(null);
-        return;
-      }
-
-      const carrierInput = window.prompt(
-        `Carrier pay amount for load ${load.reference || load.id}:`,
-        carrierDefault,
-      );
-      if (carrierInput === null) {
-        setMarkPaidLoadingId(null);
-        return;
-      }
-
-      const shipperValue = shipperInput.trim();
-      const carrierValue = carrierInput.trim();
-
-      if (!shipperValue || !carrierValue) {
-        alert("Both shipper billed and carrier pay amounts are required.");
-        setMarkPaidLoadingId(null);
-        return;
-      }
-
-      const shipperNumber = Number(shipperValue);
-      const carrierNumber = Number(carrierValue);
-
-      if (!Number.isFinite(shipperNumber) || !Number.isFinite(carrierNumber)) {
-        alert("Amounts must be valid numbers.");
-        setMarkPaidLoadingId(null);
-        return;
-      }
-
-      const res = await fetch(`/api/admin/loads/${load.id}/mark-paid`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          shipperBilledAmount: shipperNumber,
-          carrierPayAmount: carrierNumber,
-          paidStatus: "paid",
+          ready: false,
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to mark load as paid");
+      const json = (await res.json().catch(() => ({}))) as ReadyToInvoiceResponse;
+
+      if (!res.ok || !json.ok || !json.load) {
+        throw new Error(json.error || "Failed to unset ready-to-invoice");
       }
 
-      const data = await res.json();
-      const updated = data.load as Load;
-
-      setLoads((prev) => prev.map((l) => (l.id === load.id ? updated : l)));
+      const updated = json.load;
+      setLoads((prev) =>
+        prev.map((l) => (l.id === updated.id ? (updated as Load) : l)),
+      );
     } catch (err: any) {
-      console.error("Error marking load as paid:", err);
-      setError(err.message || "Failed to mark load as paid");
+      console.error("Error unsetting ready-to-invoice:", err);
+      setError(err.message || "Failed to unset ready-to-invoice");
     } finally {
-      setMarkPaidLoadingId(null);
+      setLoading(false);
     }
-  };
+  }
+
+  const filteredLoads = loads; // filtering handled by API
 
   return (
-    <div className="min-h-screen bg-black text-gray-100 px-6 py-8">
+    <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
       <div className="max-w-6xl mx-auto space-y-6">
-        <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        {/* Header */}
+        <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight">
-              Loads – Deadhead Zero
+              Loads board
             </h1>
-            <p className="text-sm text-gray-400">
-              Track docs, invoice readiness, and paid / margin in one place.
+            <p className="text-sm text-slate-400">
+              Track loads from creation through docs and invoicing. Stripe
+              invoices are generated from ready-to-invoice loads.
             </p>
           </div>
-          <button
-            type="button"
-            onClick={() => (window.location.href = "/admin/loads/new")}
-            className="inline-flex items-center justify-center rounded-lg border border-cyan-500/70 bg-cyan-500/10 px-4 py-2 text-sm font-medium text-cyan-100 hover:bg-cyan-500/20"
+          <Link
+            href="/admin/loads/new"
+            className="inline-flex items-center justify-center rounded-xl border border-emerald-400/70 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-100 hover:bg-emerald-500/20"
           >
-            + New load
-          </button>
+            + Create new load
+          </Link>
         </header>
 
-        <section className="rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-950 to-gray-900/60 p-4 shadow-xl shadow-cyan-500/10">
-          <form
-            onSubmit={handleSearchSubmit}
-            className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
-          >
-            <div className="flex flex-wrap items-center gap-3">
-              <label className="text-xs uppercase tracking-wide text-gray-400">
-                Status
-              </label>
-              <select
-                value={statusFilter}
-                onChange={(e) =>
-                  setStatusFilter(e.target.value as "all" | LoadStatus)
-                }
-                className="rounded-lg border border-gray-700 bg-black/60 px-3 py-1.5 text-sm focus:border-cyan-500 focus:outline-none"
-              >
-                {STATUS_OPTIONS.map((opt) => (
-                  <option key={opt.value} value={opt.value}>
-                    {opt.label}
-                  </option>
-                ))}
-              </select>
+        {/* Filters */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 px-4 py-3 text-xs">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex flex-wrap gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-400">
+                  Load status
+                </label>
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] focus:border-emerald-400 focus:outline-none"
+                >
+                  {STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-400">
+                  Payment status
+                </label>
+                <select
+                  value={paidStatusFilter}
+                  onChange={(e) => setPaidStatusFilter(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] focus:border-emerald-400 focus:outline-none"
+                >
+                  {PAID_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex flex-col gap-1 min-w-[180px]">
+                <label className="text-[11px] text-slate-400">
+                  Search (ref / shipper / carrier / city)
+                </label>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="e.g. Phoenix, ACME, REF123"
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] focus:border-emerald-400 focus:outline-none"
+                />
+              </div>
             </div>
 
-            <div className="flex flex-1 items-center gap-2">
-              <input
-                type="text"
-                placeholder="Search ref, shipper, carrier, origin, destination..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="flex-1 rounded-lg border border-gray-700 bg-black/60 px-3 py-1.5 text-sm focus:border-cyan-500 focus:outline-none"
-              />
-              <button
-                type="submit"
-                className="rounded-lg border border-gray-700 bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700"
-              >
-                Search
-              </button>
-            </div>
-          </form>
+            <button
+              type="button"
+              onClick={fetchLoads}
+              disabled={loading}
+              className="self-start rounded-lg border border-slate-700 bg-slate-950 px-3 py-1.5 text-[11px] font-medium text-slate-100 hover:border-emerald-400/70 hover:bg-slate-900 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
+              {loading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
         </section>
 
         {error && (
-          <div className="rounded-xl border border-rose-700 bg-rose-950/60 px-4 py-3 text-sm text-rose-100">
+          <div className="rounded-xl border border-rose-500/50 bg-rose-500/10 px-4 py-3 text-xs text-rose-100">
             {error}
           </div>
         )}
 
-        <section className="rounded-2xl border border-gray-800 bg-black/60 shadow-xl shadow-cyan-500/5">
+        {/* Loads table */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/70 overflow-hidden text-xs">
+          <div className="border-b border-slate-800 px-4 py-2 flex items-center justify-between text-slate-400">
+            <span>Loads ({filteredLoads.length})</span>
+            <span className="text-[10px]">
+              Click lane to open document ops; use Invoice column to view Stripe.
+            </span>
+          </div>
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="bg-gray-950/80 border-b border-gray-800">
+            <table className="min-w-full text-xs">
+              <thead className="bg-slate-900/80 text-slate-400">
                 <tr>
-                  <th className="px-3 py-2 text-left font-medium text-gray-400">
-                    Created
+                  <th className="px-3 py-2 text-left font-normal">Created</th>
+                  <th className="px-3 py-2 text-left font-normal">Ref</th>
+                  <th className="px-3 py-2 text-left font-normal">Lane</th>
+                  <th className="px-3 py-2 text-left font-normal">Shipper</th>
+                  <th className="px-3 py-2 text-left font-normal">Carrier</th>
+                  <th className="px-3 py-2 text-right font-normal">Rate</th>
+                  <th className="px-3 py-2 text-left font-normal">Status</th>
+                  <th className="px-3 py-2 text-left font-normal">Invoice</th>
+                  <th className="px-3 py-2 text-right font-normal">
+                    Actions
                   </th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-400">
-                    Ref
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-400">
-                    Lane
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-400">
-                    Carrier
-                  </th>
-                  <th className="px-3 py-2 text-left font-medium text-gray-400">
-                    PU / Del
-                  </th>
-                  <th className="px-3 py-2 text-right font-medium text-gray-400">
-                    Rate
-                  </th>
-                  <th className="px-3 py-2 text-right font-medium text-gray-400">
-                    Margin
-                  </th>
-                  <th className="px-3 py-2 text-center font-medium text-gray-400">
-                    Status
-                  </th>
-                  <th className="px-3 py-2 text-center font-medium text-gray-400">
-                    Ready?
-                  </th>
-                  <th className="px-3 py-2 text-center font-medium text-gray-400">
-                    Paid
-                  </th>
-                  <th className="px-3 py-2"></th>
                 </tr>
               </thead>
               <tbody>
-                {loads.length === 0 && (
+                {filteredLoads.length === 0 && (
                   <tr>
                     <td
-                      colSpan={11}
-                      className="px-3 py-8 text-center text-gray-500"
+                      colSpan={9}
+                      className="px-3 py-6 text-center text-slate-500"
                     >
-                      {loading ? "Loading loads..." : "No loads found."}
+                      No loads found. Create a new load to get started.
                     </td>
                   </tr>
                 )}
-
-                {loads.map((load) => {
-                  const lane = `${load.origin_city || ""}${
-                    load.origin_state ? ", " + load.origin_state : ""
-                  } → ${load.dest_city || ""}${
-                    load.dest_state ? ", " + load.dest_state : ""
-                  }`;
-
-                  const margin =
-                    load.margin_cached !== null &&
-                    load.margin_cached !== undefined
-                      ? load.margin_cached
-                      : load.shipper_billed_amount !== null &&
-                        load.shipper_billed_amount !== undefined &&
-                        load.carrier_pay_amount !== null &&
-                        load.carrier_pay_amount !== undefined
-                      ? load.shipper_billed_amount - load.carrier_pay_amount
-                      : null;
-
-                  const isReady =
-                    load.status === "ready_to_invoice" ||
-                    load.status === "delivered" ||
-                    load.status === "completed";
+                {filteredLoads.map((load) => {
+                  const lane =
+                    load.origin_city && load.dest_city
+                      ? `${load.origin_city}${
+                          load.origin_state ? `, ${load.origin_state}` : ""
+                        } → ${load.dest_city}${
+                          load.dest_state ? `, ${load.dest_state}` : ""
+                        }`
+                      : "—";
+                  const canSendInvoice =
+                    load.status === "docs_received" ||
+                    load.status === "ready_to_invoice";
 
                   return (
                     <tr
                       key={load.id}
-                      className="border-b border-gray-800/80 hover:bg-gray-900/60"
+                      className="border-t border-slate-800 hover:bg-slate-900/60"
                     >
-                      <td
-                        className="px-3 py-2 align-top cursor-pointer"
-                        onClick={() => handleRowClick(load.token)}
-                      >
+                      <td className="px-3 py-2 text-slate-300">
                         {formatDateTime(load.created_at)}
                       </td>
-                      <td
-                        className="px-3 py-2 align-top cursor-pointer whitespace-nowrap"
-                        onClick={() => handleRowClick(load.token)}
-                      >
+                      <td className="px-3 py-2 text-slate-200">
                         {load.reference || `#${load.id}`}
                       </td>
-                      <td
-                        className="px-3 py-2 align-top cursor-pointer"
-                        onClick={() => handleRowClick(load.token)}
-                      >
-                        <div className="max-w-[220px] truncate">{lane}</div>
+                      <td className="px-3 py-2">
+                        {load.token ? (
+                          <Link
+                            href={`/admin/load-docs/${encodeURIComponent(
+                              load.token,
+                            )}`}
+                            className="text-emerald-300 hover:underline"
+                          >
+                            {lane}
+                          </Link>
+                        ) : (
+                          lane
+                        )}
                       </td>
-                      <td
-                        className="px-3 py-2 align-top cursor-pointer"
-                        onClick={() => handleRowClick(load.token)}
-                      >
-                        <div className="max-w-[200px] truncate">
-                          {load.carrier_name || "-"}
-                        </div>
+                      <td className="px-3 py-2 text-slate-300">
+                        {load.shipper_name || "—"}
                       </td>
-                      <td
-                        className="px-3 py-2 align-top cursor-pointer whitespace-nowrap"
-                        onClick={() => handleRowClick(load.token)}
-                      >
-                        <div>{formatDate(load.pickup_date)}</div>
-                        <div className="text-xs text-gray-500">
-                          → {formatDate(load.delivery_date)}
-                        </div>
+                      <td className="px-3 py-2 text-slate-300">
+                        {load.carrier_name || "—"}
                       </td>
-                      <td className="px-3 py-2 align-top text-right whitespace-nowrap">
-                        {formatCurrency(load.rate)}
+                      <td className="px-3 py-2 text-right">
+                        {formatMoney(load.rate)}
                       </td>
-                      <td className="px-3 py-2 align-top text-right whitespace-nowrap">
-                        {margin !== null ? formatCurrency(margin) : "-"}
-                      </td>
-                      <td className="px-3 py-2 align-top text-center">
-                        <span className="inline-flex items-center rounded-full bg-gray-900/60 px-2 py-1 text-xs text-gray-200 border border-gray-700">
-                          {formatStatusBadge(load.status)}
+                      <td className="px-3 py-2">
+                        <span className="inline-flex items-center rounded-full bg-slate-800 px-2 py-0.5 text-[10px] capitalize">
+                          {load.status || "unknown"}
                         </span>
+                        {load.paid_status === "paid" && (
+                          <span className="ml-1 inline-flex items-center rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] text-emerald-200">
+                            Paid
+                          </span>
+                        )}
                       </td>
-                      <td className="px-3 py-2 align-top text-center">
-                        <button
-                          type="button"
-                          disabled={readyToggleLoadingId === load.id}
-                          onClick={() => handleReadyToggle(load, !isReady)}
-                          className={`inline-flex items-center justify-center rounded-full px-3 py-1 text-xs border ${
-                            isReady
-                              ? "border-emerald-500/70 bg-emerald-900/50 text-emerald-100"
-                              : "border-gray-600 bg-gray-900 text-gray-200"
-                          } ${
-                            readyToggleLoadingId === load.id
-                              ? "opacity-60 cursor-not-allowed"
-                              : "hover:border-cyan-500/80"
-                          }`}
-                        >
-                          {readyToggleLoadingId === load.id
-                            ? "Saving..."
-                            : isReady
-                            ? "Ready"
-                            : "Not ready"}
-                        </button>
+                      <td className="px-3 py-2">
+                        {load.stripe_invoice_url ? (
+                          <a
+                            href={load.stripe_invoice_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-emerald-300 hover:underline"
+                          >
+                            View invoice ↗
+                          </a>
+                        ) : (
+                          <span className="text-slate-500">—</span>
+                        )}
                       </td>
-                      <td className="px-3 py-2 align-top text-center">
-                        <PaidBadge paidStatus={load.paid_status} />
-                      </td>
-                      <td className="px-3 py-2 align-top text-center">
-                        <button
-                          type="button"
-                          disabled={markPaidLoadingId === load.id}
-                          onClick={() => handleMarkPaid(load)}
-                          className="inline-flex items-center justify-center rounded-full border border-cyan-500/70 bg-cyan-500/10 px-3 py-1 text-xs text-cyan-100 hover:bg-cyan-500/20 disabled:opacity-60 disabled:cursor-not-allowed"
-                        >
-                          {markPaidLoadingId === load.id
-                            ? "Updating..."
-                            : "Mark paid"}
-                        </button>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex justify-end gap-2">
+                          {load.status === "ready_to_invoice" ? (
+                            <button
+                              type="button"
+                              onClick={() => handleUnsetReady(load)}
+                              disabled={loading}
+                              className="rounded-lg border border-amber-400/60 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-100 hover:bg-amber-500/20 disabled:opacity-60"
+                            >
+                              Unset ready
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => openInvoiceModal(load)}
+                              disabled={!canSendInvoice || loading}
+                              className="rounded-lg border border-emerald-400/60 bg-emerald-500/10 px-2 py-1 text-[10px] text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-40"
+                            >
+                              Send invoice
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
@@ -509,7 +481,101 @@ export default function AdminLoadsPage() {
             </table>
           </div>
         </section>
+
+        <p className="mt-2 text-[11px] text-slate-500">
+          Invoicing flow: docs received →{" "}
+          <span className="font-mono">Send invoice</span> → Stripe email +
+          hosted invoice → mark paid when funds clear.
+        </p>
       </div>
+
+      {/* Payment terms modal */}
+      {modalOpen && modalLoad && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950 p-5 text-xs shadow-xl shadow-emerald-500/20">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-100">
+                  Send invoice for{" "}
+                  {modalLoad.reference || `Load #${modalLoad.id}`}
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Adjust payment terms and due days for this specific shipper.
+                  Stripe will email the invoice and host a payment page.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeInvoiceModal}
+                className="text-slate-500 hover:text-slate-300 text-sm"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="space-y-3 mb-4">
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-slate-400">
+                  Payment terms (text shown on invoice)
+                </label>
+                <textarea
+                  value={modalPaymentTerms}
+                  onChange={(e) => setModalPaymentTerms(e.target.value)}
+                  rows={3}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-slate-100 focus:border-emerald-400 focus:outline-none"
+                  placeholder="Payment terms: Net 21 days. Late payments may be subject to finance charges as agreed."
+                />
+              </div>
+              <div className="flex flex-col gap-1 max-w-[120px]">
+                <label className="text-[11px] text-slate-400">
+                  Days until due
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  value={modalDueDays}
+                  onChange={(e) => setModalDueDays(e.target.value)}
+                  className="rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-[11px] text-slate-100 focus:border-emerald-400 focus:outline-none"
+                />
+              </div>
+
+              <div className="text-[11px] text-slate-500">
+                This invoice will be sent to{" "}
+                <span className="font-mono text-slate-200">
+                  {modalLoad.shipper_email || "no-shipper-email-set"}
+                </span>
+                . Make sure the shipper email is correct on the load before
+                sending.
+              </div>
+
+              {modalError && (
+                <div className="rounded-xl border border-rose-500/60 bg-rose-500/10 px-3 py-2 text-[11px] text-rose-100">
+                  {modalError}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeInvoiceModal}
+                disabled={modalSubmitting}
+                className="rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-[11px] text-slate-200 hover:bg-slate-800 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSendInvoice}
+                disabled={modalSubmitting}
+                className="rounded-lg border border-emerald-400/80 bg-emerald-500/20 px-3 py-1.5 text-[11px] font-medium text-emerald-100 hover:bg-emerald-500/30 disabled:opacity-60"
+              >
+                {modalSubmitting ? "Sending…" : "Send Stripe invoice"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
