@@ -7,15 +7,16 @@ import Link from "next/link";
 
 type CreateResponse = {
   ok: boolean;
-  load?: any;
-  uploadLink?: string;
-  emailError?: string;
+  loadId?: string | number;
+  token?: string;
+  uploadUrl?: string;
   error?: string;
 };
 
 export default function NewLoadPage() {
   const [reference, setReference] = useState("");
   const [shipperName, setShipperName] = useState("");
+  const [shipperEmail, setShipperEmail] = useState("");
   const [receiverName, setReceiverName] = useState("");
   const [originCity, setOriginCity] = useState("");
   const [originState, setOriginState] = useState("");
@@ -41,6 +42,7 @@ export default function NewLoadPage() {
       const payload = {
         reference: reference || null,
         shipperName: shipperName || null,
+        shipperEmail: shipperEmail || null,
         receiverName: receiverName || null,
         originCity: originCity || null,
         originState: originState || null,
@@ -59,7 +61,10 @@ export default function NewLoadPage() {
         body: JSON.stringify(payload),
       });
 
-      const json: CreateResponse = await res.json();
+      const json: CreateResponse = await res.json().catch(() => ({
+        ok: false,
+        error: "Failed to parse response",
+      }));
 
       if (!res.ok || !json.ok) {
         throw new Error(json.error || "Failed to create load");
@@ -73,13 +78,6 @@ export default function NewLoadPage() {
       setSubmitting(false);
     }
   };
-
-  // Handle both uploadLink on the top-level and upload_link on the load row
-  const uploadUrl =
-    result?.uploadLink ||
-    (result?.load?.upload_link as string | undefined) ||
-    undefined;
-  const token = (result?.load?.token as string | undefined) || undefined;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-50 px-4 py-8">
@@ -95,10 +93,10 @@ export default function NewLoadPage() {
             </p>
           </div>
           <Link
-            href="/admin/loads"
+            href="/admin"
             className="text-xs text-slate-400 hover:text-emerald-300"
           >
-            ← Back to Loads
+            ← Back to Admin Portal
           </Link>
         </header>
 
@@ -109,34 +107,31 @@ export default function NewLoadPage() {
             </div>
           )}
 
-          {result?.ok && uploadUrl && (
+          {result?.ok && result.uploadUrl && (
             <div className="mb-4 text-xs rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-100 px-3 py-2 space-y-1">
               <div className="font-semibold">Load created successfully.</div>
               <div>
                 Upload link for carrier:{" "}
                 <a
-                  href={uploadUrl}
+                  href={result.uploadUrl}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="underline"
                 >
-                  {uploadUrl}
+                  {result.uploadUrl}
                 </a>
               </div>
-              {token && (
+              {result.token && (
                 <div>
                   Admin view for this token:{" "}
                   <Link
-                    href={`/admin/load-docs/${encodeURIComponent(token)}`}
+                    href={`/admin/load-docs/${encodeURIComponent(
+                      result.token,
+                    )}`}
                     className="underline"
                   >
                     open in Document Ops
                   </Link>
-                </div>
-              )}
-              {result.emailError && (
-                <div className="text-amber-200">
-                  Email note: {result.emailError}
                 </div>
               )}
             </div>
@@ -165,8 +160,23 @@ export default function NewLoadPage() {
                   onChange={(e) => setShipperName(e.target.value)}
                   className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400"
                   placeholder="Shipper company"
+                  required
                 />
               </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-200">Shipper email</span>
+                <input
+                  type="email"
+                  value={shipperEmail}
+                  onChange={(e) => setShipperEmail(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400"
+                  placeholder="billing@shipper.com"
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex flex-col gap-1">
                 <span className="text-slate-200">Receiver name</span>
                 <input
