@@ -10,7 +10,7 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || "all";
     const search = searchParams.get("search") || "";
-    const paidStatus = searchParams.get("paid_status") || ""; // optional filter
+    const paidStatus = searchParams.get("paid_status") || "";
 
     let query = supabaseAdmin
       .from("loads")
@@ -33,7 +33,6 @@ export async function GET(req: NextRequest) {
         carrier_email,
         rate,
         created_at,
-        -- invoicing + payments
         stripe_invoice_id,
         stripe_invoice_url,
         payment_terms_text,
@@ -75,7 +74,10 @@ export async function GET(req: NextRequest) {
     if (error) {
       console.error("[loads/list] Error fetching loads:", error);
       return NextResponse.json(
-        { ok: false, error: "Failed to fetch loads" },
+        {
+          ok: false,
+          error: error.message || "Failed to fetch loads from Supabase",
+        },
         { status: 500 },
       );
     }
@@ -90,7 +92,11 @@ export async function GET(req: NextRequest) {
   } catch (err: any) {
     console.error("[loads/list] Unexpected error:", err);
     return NextResponse.json(
-      { ok: false, error: "Unexpected server error" },
+      {
+        ok: false,
+        error:
+          err?.message || "Unexpected server error while fetching loads list",
+      },
       { status: 500 },
     );
   }
