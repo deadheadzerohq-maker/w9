@@ -1,32 +1,47 @@
-// app/lib/emailHelpers.ts
+// /lib/emailHelpers.ts
 
-export function formatDateTime(value?: string | null): string {
-  if (!value) return "";
-  const date = new Date(value);
-  if (isNaN(date.getTime())) return value;
+export function buildLaneDescription(
+  args:
+    | {
+        origin_city?: string | null;
+        origin_state?: string | null;
+        dest_city?: string | null;
+        dest_state?: string | null;
+      }
+    | string,
+): string {
+  // Backwards-compatible: if someone passes a plain string, just return it.
+  if (typeof args === "string") {
+    return args;
+  }
 
-  return date.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
+  const { origin_city, origin_state, dest_city, dest_state } = args;
+
+  const originParts = [origin_city, origin_state].filter(Boolean).join(", ");
+  const destParts = [dest_city, dest_state].filter(Boolean).join(", ");
+
+  if (!originParts && !destParts) return "";
+
+  if (!originParts) return destParts;
+  if (!destParts) return originParts;
+
+  return `${originParts} → ${destParts}`;
+}
+
+export function formatDateTime(
+  value: string | null | undefined,
+): string | null {
+  if (!value) return null;
+
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return null;
+
+  // You can tweak this for your preferred display format
+  return d.toLocaleString("en-US", {
     year: "numeric",
+    month: "short",
+    day: "2-digit",
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-export function buildLaneDescription(
-  originCity?: string | null,
-  originState?: string | null,
-  destCity?: string | null,
-  destState?: string | null,
-): string {
-  const origin =
-    originCity && originState
-      ? `${originCity}, ${originState}`
-      : originCity || originState || "Origin";
-  const dest =
-    destCity && destState
-      ? `${destCity}, ${destState}`
-      : destCity || destState || "Destination";
-  return `${origin} → ${dest}`;
 }
