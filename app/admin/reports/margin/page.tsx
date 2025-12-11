@@ -31,10 +31,18 @@ type ApiResponse = {
   byMonth: MonthRow[];
   byShipper: ShipperRow[];
   count: number;
+  error?: string;
 };
 
 function formatCurrency(value: number) {
   return `$${value.toFixed(2)}`;
+}
+
+function isoToDateInput(iso: string | null | undefined) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(0, 10);
 }
 
 export default function MarginReportPage() {
@@ -55,20 +63,23 @@ export default function MarginReportPage() {
       if (to) params.set("to", to);
       if (shipper.trim()) params.set("shipper", shipper.trim());
 
-      const res = await fetch(
-        `/api/admin/reports/margin?${params.toString()}`,
-        {
-          method: "GET",
-        },
-      );
+      const url = `/api/admin/reports/margin${
+        params.toString() ? `?${params.toString()}` : ""
+      }`;
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({}));
-        throw new Error(body.error || "Failed to load margin report");
+      const res = await fetch(url, { method: "GET" });
+
+      const json = (await res.json().catch(() => ({}))) as ApiResponse;
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Failed to load margin report");
       }
 
-      const json = (await res.json()) as ApiResponse;
       setData(json);
+
+      // Seed date filters from API window if you haven't typed anything yet
+      if (!from) setFrom(isoToDateInput(json.from));
+      if (!to) setTo(isoToDateInput(json.to));
     } catch (err: any) {
       console.error("Error loading margin report:", err);
       setError(err.message || "Failed to load margin report");
@@ -183,6 +194,7 @@ export default function MarginReportPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {/* By month */}
                 <div className="rounded-xl border border-gray-800 bg-black/70">
                   <div className="border-b border-gray-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                     By month (paid_at)
@@ -238,6 +250,7 @@ export default function MarginReportPage() {
                   </div>
                 </div>
 
+                {/* By shipper */}
                 <div className="rounded-xl border border-gray-800 bg-black/70">
                   <div className="border-b border-gray-800 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
                     By shipper
@@ -250,10 +263,10 @@ export default function MarginReportPage() {
                             Shipper
                           </th>
                           <th className="px-3 py-2 text-right text-gray-400 font-medium">
-                            Shipper
+                            Shipper billed
                           </th>
                           <th className="px-3 py-2 text-right text-gray-400 font-medium">
-                            Carrier
+                            Carrier pay
                           </th>
                           <th className="px-3 py-2 text-right text-gray-400 font-medium">
                             Margin
