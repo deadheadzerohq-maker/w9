@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
-import { formatDateTime, buildLaneDescription } from "@/lib/emailHelpers";
+import { buildLaneDescription, formatDateTime } from "@/lib/emailHelpers";
 
 export const runtime = "nodejs";
 
@@ -12,7 +12,6 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 function toIsoFromLocalDateTime(value: string | null): string | null {
   if (!value) return null;
-  // value is like "2025-12-10T15:10" (local time)
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return null;
   return d.toISOString();
@@ -63,12 +62,14 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Generate token + upload URL
     const token = crypto.randomUUID();
 
     const baseUrl =
       process.env.NEXT_PUBLIC_BASE_URL ||
       process.env.VERCEL_PROJECT_PRODUCTION_URL ||
       "";
+
     const origin =
       baseUrl && baseUrl.startsWith("http")
         ? baseUrl
@@ -83,6 +84,7 @@ export async function POST(req: NextRequest) {
     const pickupIso = toIsoFromLocalDateTime(pickupDate || null);
     const deliveryIso = toIsoFromLocalDateTime(deliveryDate || null);
 
+    // Insert load
     const { data, error } = await supabaseAdmin
       .from("loads")
       .insert({
@@ -114,7 +116,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Use helper to build lane string
     const lane = buildLaneDescription({
       origin_city: data.origin_city,
       origin_state: data.origin_state,
@@ -127,23 +128,24 @@ export async function POST(req: NextRequest) {
       ? formatDateTime(data.delivery_date)
       : null;
 
-    if (resend) {
-      try {
-        const subjectRef = data.reference || `Load #${data.id}`;
+    let emailSent = false;
+    let emailError: string | null = null;
 
-        const to: string[] = [];
-        if (data.carrier_email) to.push(data.carrier_email as string);
+    if (!resend) {
+      console.warn(
+        "[loads/create] RESEND_API_KEY not set, skipping upload email.",
+      );
+      emailError = "RESEND_API_KEY is not configured in Vercel env vars.";
+    } else {
+      const subjectRef = data.reference || `Load #${data.id}`;
+      const to: string[] = [];
+      if (carrierEmail) to.push(carrierEmail);
 
-        const cc: string[] = [];
-        if (data.shipper_email) cc.push(data.shipper_email as string);
+      const cc: string[] = [];
+      if (shipperEmail) cc.push(shipperEmail);
 
-        console.log("[loads/create] Email recipients", {
-          to,
-          cc,
-          subjectRef,
-        });
-
-        if (to.length > 0) {
+      if (to.length > 0) {
+        try {
           const htmlParts: string[] = [];
 
           htmlParts.push(
@@ -191,7 +193,7 @@ export async function POST(req: NextRequest) {
           await resend.emails.send({
             from: "Deadhead Zero <info@deadheadzero.com>",
             to,
-            cc,
+            cc: cc.length ? cc : undefined,
             subject: `Documents requested for ${subjectRef} – Deadhead Zero`,
             text: [
               `Deadhead Zero Logistics LLC has created a new load and is requesting documents.`,
@@ -208,20 +210,15 @@ export async function POST(req: NextRequest) {
             html: htmlParts.join(""),
           });
 
-          console.log("[loads/create] Email sent via Resend");
-        } else {
-          console.warn(
-            "[loads/create] No carrier_email on load; skipping upload email.",
-          );
+          emailSent = true;
+        } catch (err: any) {
+          console.error("[loads/create] Error sending upload email:", err);
+          emailError =
+            err?.message || "Error sending upload email via Resend API.";
         }
-      } catch (emailErr) {
-        console.error("[loads/create] Error sending upload email:", emailErr);
-        // Non-fatal: load is still created
+      } else {
+        emailError = "No carrier email present to send upload link.";
       }
-    } else {
-      console.warn(
-        "[loads/create] RESEND_API_KEY not set, skipping upload email.",
-      );
     }
 
     return NextResponse.json(
@@ -230,6 +227,8 @@ export async function POST(req: NextRequest) {
         loadId: data.id,
         token: data.token,
         uploadUrl,
+        emailSent,
+        emailError,
       },
       { status: 200 },
     );
