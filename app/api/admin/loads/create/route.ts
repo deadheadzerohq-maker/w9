@@ -3,7 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import supabaseAdmin from "@/lib/supabaseAdmin";
 import { Resend } from "resend";
-import { formatDateTime } from "@/lib/emailHelpers"; // ⬅️ removed buildLaneDescription import
+import { formatDateTime, buildLaneDescription } from "@/lib/emailHelpers";
 
 export const runtime = "nodejs";
 
@@ -114,14 +114,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 🔧 Build lane string inline so we don't depend on buildLaneDescription’s type
-    const originLanePart = [data.origin_city, data.origin_state]
-      .filter(Boolean)
-      .join(", ");
-    const destLanePart = [data.dest_city, data.dest_state]
-      .filter(Boolean)
-      .join(", ");
-    const lane = [originLanePart, destLanePart].filter(Boolean).join(" → ");
+    // Use helper to build lane string
+    const lane = buildLaneDescription({
+      origin_city: data.origin_city,
+      origin_state: data.origin_state,
+      dest_city: data.dest_city,
+      dest_state: data.dest_state,
+    });
 
     const pickupPretty = formatDateTime(data.pickup_date);
     const deliveryPretty = data.delivery_date
@@ -131,11 +130,18 @@ export async function POST(req: NextRequest) {
     if (resend) {
       try {
         const subjectRef = data.reference || `Load #${data.id}`;
+
         const to: string[] = [];
-        if (carrierEmail) to.push(carrierEmail);
+        if (data.carrier_email) to.push(data.carrier_email as string);
 
         const cc: string[] = [];
-        if (shipperEmail) cc.push(shipperEmail);
+        if (data.shipper_email) cc.push(data.shipper_email as string);
+
+        console.log("[loads/create] Email recipients", {
+          to,
+          cc,
+          subjectRef,
+        });
 
         if (to.length > 0) {
           const htmlParts: string[] = [];
@@ -201,6 +207,12 @@ export async function POST(req: NextRequest) {
               .join("\n"),
             html: htmlParts.join(""),
           });
+
+          console.log("[loads/create] Email sent via Resend");
+        } else {
+          console.warn(
+            "[loads/create] No carrier_email on load; skipping upload email.",
+          );
         }
       } catch (emailErr) {
         console.error("[loads/create] Error sending upload email:", emailErr);
