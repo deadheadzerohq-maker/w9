@@ -199,12 +199,12 @@ export async function POST(
     // if (docType.toLowerCase() === "pod") { ... }
     if (load && resend) {
       try {
-        const laneDesc = buildLaneDescription(
-          load.origin_city,
-          load.origin_state,
-          load.dest_city,
-          load.dest_state,
-        );
+        const laneDesc = buildLaneDescription({
+          origin_city: load.origin_city,
+          origin_state: load.origin_state,
+          dest_city: load.dest_city,
+          dest_state: load.dest_state,
+        });
 
         const pickupPretty = load.pickup_date
           ? formatDateTime(load.pickup_date)
