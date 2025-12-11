@@ -1,3 +1,5 @@
+// app/admin/page.tsx
+
 "use client";
 
 import Link from "next/link";
@@ -41,7 +43,7 @@ export default function AdminHomePage() {
             </div>
           </section>
 
-          {/* Document & Fraud Ops */}
+          {/* Documents & Fraud Ops */}
           <section className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
             <h2 className="text-sm font-semibold text-slate-200 mb-3">
               Documents &amp; Fraud
@@ -84,6 +86,25 @@ export default function AdminHomePage() {
                   form instead of hand-building these.
                 </p>
               </div>
+            </div>
+          </section>
+
+          {/* 🧮 Revenue & Margin */}
+          <section className="bg-slate-900/70 border border-slate-800 rounded-2xl p-5">
+            <h2 className="text-sm font-semibold text-slate-200 mb-3">
+              Revenue &amp; Margin
+            </h2>
+            <div className="space-y-3 text-sm">
+              <AdminLink
+                href="/admin/reports/margin"
+                title="Margin Overview"
+                description="See monthly totals for shipper billed, carrier pay, and margin across paid loads."
+              />
+              <AdminLink
+                href="/admin/loads?paid_status=unpaid"
+                title="Unpaid / Outstanding Loads"
+                description="Filter your loads board down to work that hasn't been marked paid yet."
+              />
             </div>
           </section>
 
