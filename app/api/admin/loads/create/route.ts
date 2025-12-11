@@ -62,7 +62,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Generate token + upload URL
+    // --- Token + URL ---
     const token = crypto.randomUUID();
 
     const baseUrl =
@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     const pickupIso = toIsoFromLocalDateTime(pickupDate || null);
     const deliveryIso = toIsoFromLocalDateTime(deliveryDate || null);
 
-    // Insert load
+    // --- Insert load ---
     const { data, error } = await supabaseAdmin
       .from("loads")
       .insert({
@@ -116,6 +116,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // --- Build email content ---
     const lane = buildLaneDescription({
       origin_city: data.origin_city,
       origin_state: data.origin_state,
