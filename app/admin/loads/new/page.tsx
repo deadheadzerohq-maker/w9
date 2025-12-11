@@ -109,7 +109,6 @@ export default function NewLoadPage() {
             </div>
           )}
 
-          {/* success card */}
           {result?.ok && result.uploadUrl && (
             <div className="mb-4 text-xs rounded-xl border border-emerald-500/50 bg-emerald-500/10 text-emerald-100 px-3 py-2 space-y-1">
               <div className="font-semibold">Load created successfully.</div>
@@ -152,7 +151,6 @@ export default function NewLoadPage() {
           )}
 
           <form onSubmit={handleSubmit} className="space-y-5 text-sm">
-            {/* Reference */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex flex-col gap-1">
                 <span className="text-slate-200">Reference (optional)</span>
@@ -165,7 +163,6 @@ export default function NewLoadPage() {
               </label>
             </div>
 
-            {/* Shipper / Receiver */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex flex-col gap-1">
                 <span className="text-slate-200">Shipper name</span>
@@ -202,7 +199,6 @@ export default function NewLoadPage() {
               </label>
             </div>
 
-            {/* Lane */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex flex-col gap-1">
                 <span className="text-slate-200">Origin city</span>
@@ -247,7 +243,83 @@ export default function NewLoadPage() {
               </label>
             </div>
 
-            {/* Dates */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <label className="flex flex-col gap-1">
-                <span className="text-slate-200">Pickup date/time</s
+                <span className="text-slate-200">Pickup date/time</span>
+                <input
+                  type="datetime-local"
+                  value={pickupDate}
+                  onChange={(e) => setPickupDate(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400"
+                  required
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-200">Delivery date/time</span>
+                <input
+                  type="datetime-local"
+                  value={deliveryDate}
+                  onChange={(e) => setDeliveryDate(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400"
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-200">Carrier name</span>
+                <input
+                  value={carrierName}
+                  onChange={(e) => setCarrierName(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400"
+                  placeholder="Carrier Company"
+                />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-200">Carrier email</span>
+                <input
+                  type="email"
+                  value={carrierEmail}
+                  onChange={(e) => setCarrierEmail(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400"
+                  placeholder="driver@carrier.com"
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <label className="flex flex-col gap-1">
+                <span className="text-slate-200">Rate (USD)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={rate}
+                  onChange={(e) => setRate(e.target.value)}
+                  className="rounded-xl bg-slate-950 border border-slate-700 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:border-emerald-400"
+                  placeholder="3450.00"
+                />
+              </label>
+            </div>
+
+            <div className="flex justify-end">
+              <button
+                type="submit"
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/40 hover:bg-emerald-400 disabled:opacity-60 disabled:cursor-not-allowed transition"
+              >
+                {submitting ? "Creating load…" : "Create load & email carrier"}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <p className="mt-4 text-[11px] text-slate-500">
+          This form triggers token generation, creates a load record, and sends
+          the carrier a secure upload link for documents. All uploads flow into
+          your existing pending_documents → review → load_documents pipeline.
+        </p>
+      </div>
+    </div>
+  );
+}
