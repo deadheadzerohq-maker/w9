@@ -5,21 +5,12 @@
 import React, { useState } from "react";
 import Link from "next/link";
 
-type SupabaseErrorPayload = {
-  message?: string;
-  details?: string;
-  hint?: string;
-  code?: string;
-};
-
 type CreateResponse = {
   ok: boolean;
-  // from API
   load?: any;
   uploadLink?: string;
   emailError?: string;
   error?: string;
-  supabase?: SupabaseErrorPayload;
 };
 
 export default function NewLoadPage() {
@@ -68,34 +59,13 @@ export default function NewLoadPage() {
         body: JSON.stringify(payload),
       });
 
-      const json: CreateResponse = await res.json().catch(() => ({
-        ok: false,
-        error: "Failed to parse API response",
-      }));
+      const json: CreateResponse = await res.json();
 
       if (!res.ok || !json.ok) {
-        const supa = json.supabase || {};
-        const parts = [
-          json.error,
-          supa.code ? `code: ${supa.code}` : "",
-          supa.message ? `message: ${supa.message}` : "",
-          supa.details ? `details: ${supa.details}` : "",
-          supa.hint ? `hint: ${supa.hint}` : "",
-        ].filter(Boolean);
-
-        const msg =
-          parts.join(" | ") ||
-          "Supabase insert error (no additional details). Check Vercel logs.";
-        setError(msg);
-        return;
+        throw new Error(json.error || "Failed to create load");
       }
 
       setResult(json);
-
-      // optional: log upload link in console for quick copy
-      if (json.uploadLink) {
-        console.log("Carrier upload link:", json.uploadLink);
-      }
     } catch (err: any) {
       console.error(err);
       setError(err?.message || "Failed to create load");
@@ -104,6 +74,7 @@ export default function NewLoadPage() {
     }
   };
 
+  // Handle both uploadLink on the top-level and upload_link on the load row
   const uploadUrl =
     result?.uploadLink ||
     (result?.load?.upload_link as string | undefined) ||
@@ -124,10 +95,10 @@ export default function NewLoadPage() {
             </p>
           </div>
           <Link
-            href="/admin"
+            href="/admin/loads"
             className="text-xs text-slate-400 hover:text-emerald-300"
           >
-            ← Back to Admin Portal
+            ← Back to Loads
           </Link>
         </header>
 
