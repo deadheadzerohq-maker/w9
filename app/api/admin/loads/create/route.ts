@@ -48,12 +48,12 @@ export async function POST(req: NextRequest) {
       originState,
       destCity,
       destState,
-      pickupDate, // ISO date string from form
-      deliveryDate, // ISO date string from form
+      pickupDate, // datetime-local string from form
+      deliveryDate,
       carrierName,
       carrierEmail,
-      rate, // number or string
-      rateConUrl,
+      rate,
+      rateConUrl, // currently unused, but kept for future attachment logic
     } = body || {};
 
     if (!carrierEmail || !carrierName) {
@@ -70,6 +70,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Convert datetime-local to ISO (or null)
     const pickupDateIso = pickupDate ? new Date(pickupDate).toISOString() : null;
     const deliveryDateIso = deliveryDate
       ? new Date(deliveryDate).toISOString()
@@ -132,17 +133,19 @@ export async function POST(req: NextRequest) {
 
     if (insertError) {
       console.error("Error inserting load:", insertError);
-      // Surface the real Postgres/Supabase error so we can see it in the UI
+
+      const msgParts = [
+        "Supabase insert failed",
+        insertError.code ? `code=${insertError.code}` : "",
+        insertError.message ? `message=${insertError.message}` : "",
+        insertError.details ? `details=${insertError.details}` : "",
+        insertError.hint ? `hint=${insertError.hint}` : "",
+      ].filter(Boolean);
+
       return NextResponse.json(
         {
           ok: false,
-          error: "Supabase insert error",
-          supabase: {
-            message: insertError.message,
-            details: insertError.details,
-            hint: insertError.hint,
-            code: insertError.code,
-          },
+          error: msgParts.join(" | "),
         },
         { status: 500 },
       );
