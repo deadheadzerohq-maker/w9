@@ -20,12 +20,13 @@ export default function RootLayout({
       <body className="bg-black text-white antialiased min-h-screen flex flex-col">
         <div className="flex-1">{children}</div>
 
-        <footer className="text-center text-xs opacity-60 py-8 space-y-2">
-          <p>
+        <footer className="text-center text-xs opacity-60 py-8 space-y-4">
+          <p className="max-w-xl mx-auto leading-relaxed">
             Deadhead Zero Logistics LLC is a technology platform and a licensed
-            freight broker (MC 1782185).
+            freight broker (MC 1782183).
           </p>
-          <p>
+
+          <p className="max-w-xl mx-auto leading-relaxed">
             Reefer Whisper is an informational SMS product only and does not
             arrange freight. Brokerage services are offered separately through
             Deadhead Zero Logistics LLC. Freight payments are processed through
