@@ -22,10 +22,15 @@ export default function RootLayout({
 
         <footer className="text-center text-xs opacity-60 py-8 space-y-2">
           <p>
-            Technology platform only, not a broker or load board. We never hold
-            freight dollars.
+            Deadhead Zero Logistics LLC is a technology platform and a licensed
+            freight broker (MC 1782185).
           </p>
-          <p>Operated by Deadhead Zero Logistics LLC</p>
+          <p>
+            Reefer Whisper is an informational SMS product only and does not
+            arrange freight. Brokerage services are offered separately through
+            Deadhead Zero Logistics LLC. Freight payments are processed through
+            third-party payment partners; we do not hold freight funds.
+          </p>
 
           <div className="flex items-center justify-center gap-4">
             <a
