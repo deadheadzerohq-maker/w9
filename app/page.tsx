@@ -234,7 +234,7 @@ export default function HomePage() {
           </p>
           <p>
             Separately, Deadhead Zero Logistics LLC also operates an
-            FMCSA-licensed freight brokerage (MC XXXXXXX) that communicates with
+            FMCSA-licensed freight brokerage (MC 1782185) that communicates with
             carriers and shippers via email and phone calls, not SMS. Brokerage
             participation does not require subscribing to Reefer Whisper.
           </p>
