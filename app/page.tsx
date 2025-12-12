@@ -182,7 +182,7 @@ export default function HomePage() {
             />
             <label htmlFor="brokerage-consent" className="cursor-pointer">
               I am interested in being contacted by Deadhead Zero Logistics LLC
-              (FMCSA-licensed freight broker, MC XXXXXXX) about freight
+              (FMCSA-licensed freight broker, MC 1782185) about freight
               opportunities via email and voice calls. I understand brokerage
               communication is{" "}
               <span className="font-semibold">separate</span> from Reefer
